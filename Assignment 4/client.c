@@ -13,9 +13,15 @@
 #include <unistd.h>
 #include <dlfcn.h>
 #include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netdb.h>
+#include <sys/time.h>
+#include <errno.h>
 
 #include "library.h"
 #include "audio.h"
+#include "packet.h"
 
 #define BUFSIZE 1024
 
@@ -34,12 +40,60 @@ void sigint_handler(int sigint)
 	}
 }
 
+int setupSocket(struct addrinfo* server) {
+    int sockfd = socket(server->ai_family, server->ai_socktype, server->ai_protocol);
+    if(sockfd < 0) {
+        fprintf(stderr, "ERROR: Could not create socket. %s\n", strerror(errno));
+        exit(1);
+    }
+
+    return sockfd;
+}
+
+int syncWithServer(int sockfd, fd_set* sync, struct timeval* timeout) {
+    int select_rv = select(sockfd + 1, sync, NULL, NULL, timeout);
+    if(select_rv < 0) {
+        fprintf(stderr, "ERROR: Could not sync fds. %s\n", strerror(errno));
+        return 1;
+    }
+    else if(select_rv == 0) {//Timeout
+        return 1;
+    }
+    else {
+        return 0;
+    }
+}
+
 int main (int argc, char *argv [])
 {
 	int server_fd, audio_fd;
 	int sample_size, sample_rate, channels;
 	client_filterfunc pfunc;
 	char buffer[BUFSIZE];
+	struct addrinfo hints, *server;
+	fd_set read_set;
+
+	FD_ZERO(&read_set);
+
+	struct timeval timeout = {3, 0};
+
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_DGRAM;
+
+	const char* hostname = argv[1];
+
+	int getaddrinfo_rv = getaddrinfo(hostname, "1234", &hints, &server);
+	if(getaddrinfo_rv != 0) {
+		fprintf(stderr, "Error: Hostname unresolved %s\n", gai_strerror(getaddrinfo_rv));
+		return 1;
+    }
+
+	server_fd = setupSocket(server);
+
+	FD_SET(server_fd, &read_set);
+	int sync_rv = syncWithServer(server_fd, &read_set, &timeout);
 
 	printf ("SysProg2006 network client\n");
 	printf ("handed in by VOORBEELDSTUDENT\n");
@@ -49,13 +103,6 @@ int main (int argc, char *argv [])
 	// parse arguments
 	if (argc < 3){
 		printf ("error : called with incorrect number of parameters\nusage : %s <server_name/IP> <filename> [<filter> [filter_options]]]\n", argv[0]) ;
-		return -1;
-	}
-	
-	// TO IMPLEMENT : open input
-	server_fd = -1;
-	if (server_fd < 0){
-		printf("error: unable to connect to server.\n");
 		return -1;
 	}
 
@@ -104,6 +151,14 @@ int main (int argc, char *argv [])
 			bytesread = read(server_fd, buffer, BUFSIZE);
 		}
 	}
+
+	freeaddrinfo(server);
+
+    int close_rv = close(server_fd);
+    if(close_rv < 0) {
+        fprintf(stderr, "Error: Could not close the socket\n");
+        return 1;
+    }
 
 	if (audio_fd >= 0)	
 		close(audio_fd);

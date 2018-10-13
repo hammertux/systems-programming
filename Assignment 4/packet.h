@@ -2,18 +2,37 @@
 #define _PACKET_H_
 
 #include <inttypes.h>
+#include <arpa/inet.h>
 
-#define MAX_BUFFER 64
+#define MAX_BUFFER 1024
+#define IAC 255
+#define SPEED 254
+#define INIT_CONNECTION 1
+#define END_CONNECTION 1
+#define NORMAL_PACKET 0
 
-typedef struct Packet {
-    unsigned int ack_bit : 1;
-    char* buffer;
+typedef _Bool uint1_t; //for header bits
+
+typedef struct __attribute__((packed)) PacketHeader {
+    //unsigned char* command;//for filters
+    uint32_t sequence_number;
+    uint32_t ack_number;
+    uint1_t syn_bit;
+    uint1_t fin_bit;
     uint16_t size;
+}PacketHeader;
+
+
+typedef struct __attribute__((packed)) Packet {
+    PacketHeader* header;
+    char data[MAX_BUFFER];
 }Packet;
 
+PacketHeader* buildHeader(uint32_t seq_num, uint32_t ack, uint16_t size);//, unsigned char* cmd);
 
-Packet* buildPacket(unsigned int ack, char* buf);
+Packet* buildPacket(PacketHeader* header, char buffer[MAX_BUFFER]);
 
+char* serializePacket(Packet* packet);
 
 
 #endif /* _PACKET_H_ */
