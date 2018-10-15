@@ -15,15 +15,15 @@ PacketHeader* buildHeader(uint32_t seq_num, uint32_t ack, uint16_t size) { //, u
 Packet* buildPacket(PacketHeader* header, char buffer[MAX_BUFFER]) {
     Packet* packet = malloc(sizeof(Packet));
     packet->header = header;
-    memcpy(&packet->data, buffer, sizeof(buffer));
+    memcpy(&packet->data, buffer, MAX_BUFFER);
     
     return packet;
 }
 
-char* serializePacket(Packet* packet) {
+void serializePacket(Packet* packet, char* buf) {
     int byte_offset = 0;
     char header_buffer[sizeof(PacketHeader)];
-    char packet_buffer[sizeof(Packet)];
+    char* packet_buffer = malloc(sizeof(Packet));
 
     uint32_t four_byte_data;
     uint1_t one_bit_data;
@@ -59,12 +59,12 @@ char* serializePacket(Packet* packet) {
     memcpy((packet_buffer + byte_offset), packet->data, sizeof(packet->data));
     byte_offset += sizeof(packet->data);
 
-    return packet_buffer;
+    buf = packet_buffer;
 }
 
 Packet* extractPacket(char buffer[sizeof(Packet)]) {
-    PacketHeader* header;
-    Packet* packet;
+    PacketHeader* header = malloc(sizeof(PacketHeader));
+    Packet* packet = malloc(sizeof(Packet));
 
     uint32_t four_byte_data;
     uint1_t one_bit_data;
@@ -84,11 +84,11 @@ Packet* extractPacket(char buffer[sizeof(Packet)]) {
     byte_offset += sizeof(one_bit_data);
 
     memcpy(&four_byte_data, (buffer + byte_offset), sizeof(four_byte_data));
-    header->sequence_number = ntohs(four_byte_data);
+    header->sequence_number = ntohl(four_byte_data);
     byte_offset += sizeof(four_byte_data);
 
     memcpy(&four_byte_data, (buffer + byte_offset), sizeof(four_byte_data));
-    header->ack_number = ntohs(four_byte_data);
+    header->ack_number = ntohl(four_byte_data);
     byte_offset += sizeof(four_byte_data);
 
     memcpy(packet->header, header, sizeof(*header));
@@ -97,10 +97,50 @@ Packet* extractPacket(char buffer[sizeof(Packet)]) {
     return packet;
 }
 
+
+void serializeInfo(AudioInfo* info, char* buf){
+    uint32_t four_byte_data;
+    int byte_offset = 0;
+
+    four_byte_data = htonl(info->channels);
+    memcpy(buf + byte_offset, &four_byte_data, sizeof(four_byte_data));
+    byte_offset += sizeof(four_byte_data);
+
+    four_byte_data = htonl(info->sample_rate);
+    memcpy(buf + byte_offset, &four_byte_data, sizeof(four_byte_data));
+    byte_offset += sizeof(four_byte_data);
+
+    four_byte_data = htonl(info->sample_size);
+    memcpy(buf + byte_offset, &four_byte_data, sizeof(four_byte_data));
+
+}
+
+AudioInfo* extractInfo(char buffer[sizeof(AudioInfo)]) {
+    AudioInfo* info = malloc(sizeof(AudioInfo));
+
+    uint32_t four_byte_data;
+    int byte_offset = 0;
+
+    memcpy(&four_byte_data, buffer + byte_offset, sizeof(four_byte_data));
+    info->channels = ntohl(four_byte_data);
+    byte_offset += sizeof(four_byte_data);
+
+    memcpy(&four_byte_data, buffer + byte_offset, sizeof(four_byte_data));
+    info->sample_rate = ntohl(four_byte_data);
+    byte_offset += sizeof(four_byte_data);
+
+    memcpy(&four_byte_data, buffer + byte_offset, sizeof(four_byte_data));
+    info->sample_size = ntohl(four_byte_data);
+
+    return info;
+}
+
+
+
 void printPacket(Packet* packet) {
     printf("Header:\nSize: %d\nSYN: %d\nFIN: %d\nSEQ: %d\nACK: %d\n\n \
             Packet:\nData: %s", packet->header->size, packet->header->syn_bit, packet->header->fin_bit, packet->header->sequence_number,
             packet->header->ack_number, packet->data);
 }
 
-
+//

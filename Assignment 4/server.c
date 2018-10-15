@@ -22,6 +22,7 @@
 #include "library.h"
 #include "audio.h"
 #include "packet.h"
+#include "util.h"
 
 /// a define used for the copy buffer in stream_data(...)
 #define BUFSIZE 1024
@@ -161,11 +162,46 @@ int setupSocket(struct sockaddr_in* server) {
 	return sockfd;
 }
 
-void first(int sockfd, struct sockaddr_in* client) {
-	char buffer[sizeof(Packet)];
+void sendMessage(int sockfd, Packet* packet, struct sockaddr_in* client, AudioInfo* info, char* file_name, socklen_t* from_len) {
+	if(packet == NULL) {
+		PacketHeader* header = buildHeader(1, 0, sizeof(PacketHeader) + sizeof(Packet));
+		header->syn_bit = 1;
+		packet->header = header;
+		int aud_read = aud_readinit(file_name, &info->sample_rate, &info->sample_size, &info->channels);
+		char buffer[MAX_BUFFER];
+		serializeInfo(info, buffer);
+		strncpy(packet->data, buffer, MAX_BUFFER);
+	}
 
-	recvfrom(sockfd, &buffer, sizeof(buffer), 0, (struct sockaddr* ) client, (socklen_t *) sizeof(*client));
-	sendto(sockfd, &buffer, sizeof(buffer), 0, (struct sockaddr* ) client, (socklen_t) sizeof(*client));
+	char buffer[sizeof(Packet)];
+	serializePacket(packet, buffer);
+	int sendto_rv = sendto(sockfd, buffer, sizeof(Packet), 0, (struct sockaddr* ) client, from_len);
+
+	if(sendto_rv < 0) {
+        fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
+        exit(1);
+    }
+}
+
+int checkPacket(Packet* sent, Packet* recv) {
+	if(recv->header->sequence_number == (sent->header->sequence_number + 1) &&
+	   recv->header->ack_number == sent->header->sequence_number) {
+		   return 0;
+	   }
+	   else {
+		   return 1;
+	   }
+}
+
+Packet* receiveMessage(int sockfd, struct sockaddr_in* client, socklen_t from_len) {
+	char buffer[sizeof(Packet)];
+	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, (struct sockaddr* ) client, from_len);
+    if(recvfrom_rv < 0) {
+        fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
+        exit(1);
+    }
+
+	return extractPacket(buffer);
 }
 
 /// the main loop, continuously waiting for clients
@@ -182,6 +218,7 @@ int main (int argc, char **argv)
 	struct timeval timeout = {2, 500000};
 
 	struct sockaddr_in client, server;
+	socklen_t from_len = sizeof(client);
 
 	memset(&server, 0, sizeof(server));
 	memset(&client, 0, sizeof(client));

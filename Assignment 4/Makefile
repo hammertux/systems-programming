@@ -3,14 +3,15 @@
 CC = gcc
 CFLAGS = -Wall -pedantic
 LDFLAGS = -ldl
+DEPS = $(wildcard *.h)
 
 ###################### HELPERS
 
 %.so : %.c
-	$(CC) $(CFLAGS) -shared -nostdlib -fPIC $+ -o $@
+	$(CC) $(CFLAGS) -shared -nostdlib -fPIC -g $+ -o $@
 
 %.o : %.c
-	${CC} ${CFLAGS} -c $? -o $@
+	${CC} ${CFLAGS} -c $^ -o $@
 
 ####################### TARGETS
 
@@ -21,10 +22,10 @@ LIBS = libblank.so
 
 all : client server ${LIBS}
 
-client : client.o audio.o
+client : client.o audio.o packet.o
 	${CC} ${CFLAGS} -o $@ $+
 
-server : server.o audio.o
+server : server.o audio.o packet.o
 	${CC} ${CFLAGS} -o $@ $+
 
 distclean : clean

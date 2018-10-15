@@ -3,6 +3,10 @@
 
 #include <inttypes.h>
 #include <arpa/inet.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include "util.h"
 
 #define MAX_BUFFER 1024
 #define IAC 255 //initiate negotition for filters
@@ -33,11 +37,15 @@ PacketHeader* buildHeader(uint32_t seq_num, uint32_t ack, uint16_t size);//, uns
 
 Packet* buildPacket(PacketHeader* header, char buffer[MAX_BUFFER]);
 
-char* serializePacket(Packet* packet);
+void serializePacket(Packet* packet, char* buf);
 
-Packet* extractPacket(char buffer[MAX_BUFFER]);
+Packet* extractPacket(char buffer[sizeof(Packet)]);
 
 void printPacket(Packet* packet);
+
+void serializeInfo(AudioInfo* info, char* buf);
+
+AudioInfo* extractInfo(char buffer[sizeof(AudioInfo)]);
 
 
 #endif /* _PACKET_H_ */

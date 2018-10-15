@@ -22,6 +22,7 @@
 #include "library.h"
 #include "audio.h"
 #include "packet.h"
+#include "util.h"
 
 #define BUFSIZE 1024
 
@@ -64,28 +65,66 @@ int syncWithServer(int sockfd, fd_set* sync, struct timeval* timeout) {
     }
 }
 
-void firstPacket(int sockfd, struct addrinfo* server, const char* file) {
-	PacketHeader* header = buildHeader(0, 0, strlen(file));
-	header->syn_bit = 1;
-	char buffer[MAX_BUFFER] = file;
-	Packet* first_packet = buildPacket(header, buffer);
+void sendMessage(int sockfd, Packet* packet, struct addrinfo* server, const char* file_name) {
+	if(packet == NULL) {
+		PacketHeader* header = buildHeader(0, 0, sizeof(PacketHeader) + sizeof(Packet));
+		header->syn_bit = 1;
+		packet->header = header;
+		strncpy(packet->data, file_name, MAX_BUFFER);
+	}
 
-	char send_buffer[sizeof(Packet)] = serializePacket(first_packet);
-	sendto(sockfd, &send_buffer, sizeof(send_buffer), 0, server->ai_addr, server->ai_addrlen);
-	char recv_buffer[sizeof(Packet)];
-	recvfrom(sockfd, &recv_buffer, sizeof(recv_buffer), 0, server->ai_addr, &server->ai_addrlen);
-	Packet* rec = extractPacket(recv_buffer);
-	printPacket(rec);
+	char buffer[sizeof(Packet)];
+	serializePacket(packet, buffer);
+
+	int sendto_rv = sendto(sockfd, buffer, sizeof(Packet), 0, server->ai_addr, server->ai_addrlen);
+
+	if(sendto_rv < 0) {
+        fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
+        exit(1);
+    }
+}
+
+int checkPacket(Packet* sent, Packet* recv) {
+	if(recv->header->sequence_number == (sent->header->sequence_number + 1) &&
+	   recv->header->ack_number == sent->header->sequence_number) {
+		   return 0;
+	   }
+	   else {
+		   return 1;
+	   }
+}
+
+Packet* receiveMessage(int sockfd, struct addrinfo* server) {
+	char buffer[sizeof(Packet)];
+	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, server->ai_addr, &server->ai_addrlen);
+    if(recvfrom_rv < 0) {
+        fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
+        exit(1);
+    }
+
+	return extractPacket(buffer);
+}
+
+int setAudioData(Packet* packet, AudioInfo* info) {
+	info = extractInfo(packet->data);
+	int write_fd = aud_writeinit(info->sample_rate, info->sample_size, info->channels);
+	if (write_fd < 0){
+		printf("error: unable to open audio output.\n");
+		exit(1);
+	}
+
+	return write_fd;
 }
 
 int main (int argc, char *argv [])
 {
 	int server_fd, audio_fd;
-	int sample_size, sample_rate, channels;
 	client_filterfunc pfunc;
 	char buffer[BUFSIZE];
 	struct addrinfo hints, *server;
 	fd_set read_set;
+	AudioInfo* audioinfo = {0, 0, 0};
+	Packet* send_packet, *recv_packet;
 
 	FD_ZERO(&read_set);
 
@@ -106,10 +145,37 @@ int main (int argc, char *argv [])
 
 	server_fd = setupSocket(server);
 
+	do {
+		sendMessage(server_fd, send_packet, server, argv[2]);
+
 	FD_SET(server_fd, &read_set);
 	int sync_rv = syncWithServer(server_fd, &read_set, &timeout);
+	if(sync_rv == 1) {
+		printf("The packet was lost.\n");
+	}
+	else if(FD_ISSET(server_fd, &read_set) && sync_rv == 0){
+		recv_packet = receiveMessage(server_fd, server);
+		if(recv_packet->header->syn_bit == 1) { // open output
+			audio_fd = setAudioData(recv_packet, audioinfo);
+		}
 
-	if(FD_ISSET(server_fd, &read_set) && sync_rv == 0){}
+		int check = checkPacket(send_packet, recv_packet);
+
+		if(check == 1) {
+			sendMessage(server_fd, send_packet, server, argv[1]);
+		}
+		else {
+			write(audio_fd, recv_packet->data, sizeof(recv_packet->data));
+			send_packet->header->sequence_number++;
+			send_packet->header->ack_number = recv_packet->header->sequence_number;
+		}
+	}
+
+	}while(!breakloop);
+
+	
+
+	
 
 	printf ("SysProg2006 network client\n");
 	printf ("handed in by VOORBEELDSTUDENT\n");
@@ -121,22 +187,8 @@ int main (int argc, char *argv [])
 		printf ("error : called with incorrect number of parameters\nusage : %s <server_name/IP> <filename> [<filter> [filter_options]]]\n", argv[0]) ;
 		return -1;
 	}
-
-	// TO IMPLEMENT
-	// send the requested filename and library information to the server
-	// and wait for an acknowledgement. Or fail if the server returns an errorcode	
-	{
-		sample_size = 4;
-		sample_rate = 44100;
-		channels = 2;
-	}
 	
-	// open output
-	audio_fd = aud_writeinit(sample_rate, sample_size, channels);
-	if (audio_fd < 0){
-		printf("error: unable to open audio output.\n");
-		return -1;
-	}
+	
 	
 	// open the library on the clientside if one is requested
 	if (argv[3] && strcmp(argv[3],"")){
