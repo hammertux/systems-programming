@@ -64,6 +64,20 @@ int syncWithServer(int sockfd, fd_set* sync, struct timeval* timeout) {
     }
 }
 
+void firstPacket(int sockfd, struct addrinfo* server, const char* file) {
+	PacketHeader* header = buildHeader(0, 0, strlen(file));
+	header->syn_bit = 1;
+	char buffer[MAX_BUFFER] = file;
+	Packet* first_packet = buildPacket(header, buffer);
+
+	char send_buffer[sizeof(Packet)] = serializePacket(first_packet);
+	sendto(sockfd, &send_buffer, sizeof(send_buffer), 0, server->ai_addr, server->ai_addrlen);
+	char recv_buffer[sizeof(Packet)];
+	recvfrom(sockfd, &recv_buffer, sizeof(recv_buffer), 0, server->ai_addr, &server->ai_addrlen);
+	Packet* rec = extractPacket(recv_buffer);
+	printPacket(rec);
+}
+
 int main (int argc, char *argv [])
 {
 	int server_fd, audio_fd;
@@ -94,6 +108,8 @@ int main (int argc, char *argv [])
 
 	FD_SET(server_fd, &read_set);
 	int sync_rv = syncWithServer(server_fd, &read_set, &timeout);
+
+	if(FD_ISSET(server_fd, &read_set) && sync_rv == 0){}
 
 	printf ("SysProg2006 network client\n");
 	printf ("handed in by VOORBEELDSTUDENT\n");

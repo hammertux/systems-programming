@@ -13,12 +13,20 @@
 #include <dlfcn.h>
 #include <signal.h>
 #include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netdb.h>
+#include <sys/time.h>
+#include <errno.h>
 
 #include "library.h"
 #include "audio.h"
+#include "packet.h"
 
 /// a define used for the copy buffer in stream_data(...)
 #define BUFSIZE 1024
+#define IP_PROTOCOL 0
+#define SERVER_PORT 1234
 
 static int breakloop = 0;	///< use this variable to stop your wait-loop. Occasionally check its value, !1 signals that the program should close
 
@@ -107,9 +115,57 @@ void sigint_handler(int sigint)
 		printf("SIGINT catched. Please wait to let the server close gracefully.\nTo close hard press Ctrl^C again.\n");
 	}
 	else{
-       		printf ("SIGINT occurred, exiting hard... please wait\n");
+       	printf ("SIGINT occurred, exiting hard... please wait\n");
 		exit(-1);
 	}
+}
+
+int syncWithClient(int sockfd, fd_set* sync, struct timeval* timeout) {
+    int select_rv = select(sockfd + 1, sync, NULL, NULL, timeout);
+    if(select_rv < 0) {
+        fprintf(stderr, "ERROR: Could not sync fds. %s\n", strerror(errno));
+        return 1;
+    }
+    else if(select_rv == 0) {
+        fprintf(stderr, "ERROR: A timeout has occured. %s\n", strerror(errno));
+        return 1;
+    }
+    else {
+        return 0;
+    }
+}
+
+int setupSocket(struct sockaddr_in* server) {
+	int sockfd = socket(AF_INET, SOCK_DGRAM, IP_PROTOCOL);
+	if(sockfd < 0) {
+        fprintf(stderr, "ERROR: Could not create socket. %s\n", strerror(errno));
+        exit(1);
+    }
+
+	server->sin_addr.s_addr = htonl(INADDR_ANY);
+	server->sin_family = AF_INET;
+	server->sin_port = htons(SERVER_PORT);
+
+	int bind_rv = bind(sockfd, (const struct sockaddr* )server, sizeof(*server));
+	if(bind_rv < 0) {
+        int close_rv = close(sockfd);
+        if(close_rv < 0) {
+            fprintf(stderr, "ERROR: Could not close the socket. %s\n", strerror(errno));
+            exit(1);
+        }
+
+        fprintf(stderr, "ERROR: Could not bind socket. %s\n", strerror(errno));
+        exit(1);
+    }
+
+	return sockfd;
+}
+
+void first(int sockfd, struct sockaddr_in* client) {
+	char buffer[sizeof(Packet)];
+
+	recvfrom(sockfd, &buffer, sizeof(buffer), 0, (struct sockaddr* ) client, (socklen_t *) sizeof(*client));
+	sendto(sockfd, &buffer, sizeof(buffer), 0, (struct sockaddr* ) client, (socklen_t) sizeof(*client));
 }
 
 /// the main loop, continuously waiting for clients
@@ -121,16 +177,39 @@ int main (int argc, char **argv)
 		printf("Usage: ./audioserver");
 		return 1;
 	}
-	
+
+	fd_set read_set;
+	struct timeval timeout = {2, 500000};
+
+	struct sockaddr_in client, server;
+
+	memset(&server, 0, sizeof(server));
+	memset(&client, 0, sizeof(client));
+
+	FD_ZERO(&read_set);
+
+	int sockfd = setupSocket(&server);
+
+	FD_SET(sockfd, &read_set);
+	int sync_rv = syncWithClient(sockfd, &read_set, &timeout);
+
 	signal(SIGINT, sigint_handler );	// trap Ctrl^C signals
+
+	do {
+		if(FD_ISSET(sockfd, &read_set) && sync_rv == 0){}
+
+	}while(!breakloop);
+
 	
-	while (!breakloop){
-		// TO IMPLEMENT: 
-		// 	wait for connections
-		// 	when a client connects, start streaming data (see the stream_data(...) prototype above)
-		sleep(1);
-		
-	}
+
+	int close_rv = close(sockfd);
+    if(close_rv < 0) {
+        fprintf(stderr, "ERROR: Could not close the socket. %s\n", strerror(errno));
+        return 1;
+    }
+
+	
+	
 
 	return 0;
 }

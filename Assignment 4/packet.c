@@ -62,4 +62,45 @@ char* serializePacket(Packet* packet) {
     return packet_buffer;
 }
 
+Packet* extractPacket(char buffer[sizeof(Packet)]) {
+    PacketHeader* header;
+    Packet* packet;
+
+    uint32_t four_byte_data;
+    uint1_t one_bit_data;
+    uint16_t two_byte_data;
+    int byte_offset = 0;
+
+    memcpy(&two_byte_data, (buffer + byte_offset), sizeof(two_byte_data));
+    header->size = ntohs(two_byte_data);
+    byte_offset += sizeof(two_byte_data);
+
+    memcpy(&one_bit_data, (buffer + byte_offset), sizeof(one_bit_data));
+    header->syn_bit = ntohs(one_bit_data);
+    byte_offset += sizeof(one_bit_data);
+
+    memcpy(&one_bit_data, (buffer + byte_offset), sizeof(one_bit_data));
+    header->fin_bit = ntohs(one_bit_data);
+    byte_offset += sizeof(one_bit_data);
+
+    memcpy(&four_byte_data, (buffer + byte_offset), sizeof(four_byte_data));
+    header->sequence_number = ntohs(four_byte_data);
+    byte_offset += sizeof(four_byte_data);
+
+    memcpy(&four_byte_data, (buffer + byte_offset), sizeof(four_byte_data));
+    header->ack_number = ntohs(four_byte_data);
+    byte_offset += sizeof(four_byte_data);
+
+    memcpy(packet->header, header, sizeof(*header));
+    memcpy(&packet->data, (buffer + byte_offset), MAX_BUFFER);
+
+    return packet;
+}
+
+void printPacket(Packet* packet) {
+    printf("Header:\nSize: %d\nSYN: %d\nFIN: %d\nSEQ: %d\nACK: %d\n\n \
+            Packet:\nData: %s", packet->header->size, packet->header->syn_bit, packet->header->fin_bit, packet->header->sequence_number,
+            packet->header->ack_number, packet->data);
+}
+
 
