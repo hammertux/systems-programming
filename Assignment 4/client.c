@@ -69,14 +69,18 @@ void sendMessage(int sockfd, Packet* packet, struct addrinfo* server, const char
 	if(packet == NULL) {
 		PacketHeader* header = buildHeader(0, 0, sizeof(PacketHeader) + sizeof(Packet));
 		header->syn_bit = 1;
-		packet->header = header;
+		packet->sequence_number = header->sequence_number;
+		packet->ack_number = header->ack_number;
+		packet->fin_bit = 0;
+		packet->syn_bit = 1;
+		packet->size = header->size;
 		strncpy(packet->data, file_name, MAX_BUFFER);
 	}
 
 	char buffer[sizeof(Packet)];
-	serializePacket(packet, buffer);
+	//serializePacket(packet, buffer);
 
-	int sendto_rv = sendto(sockfd, buffer, sizeof(Packet), 0, server->ai_addr, server->ai_addrlen);
+	int sendto_rv = sendto(sockfd, &packet, sizeof(Packet), 0, server->ai_addr, server->ai_addrlen);
 
 	if(sendto_rv < 0) {
         fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
@@ -85,8 +89,8 @@ void sendMessage(int sockfd, Packet* packet, struct addrinfo* server, const char
 }
 
 int checkPacket(Packet* sent, Packet* recv) {
-	if(recv->header->sequence_number == (sent->header->sequence_number + 1) &&
-	   recv->header->ack_number == sent->header->sequence_number) {
+	if(recv->sequence_number == (sent->sequence_number + 1) &&
+	   recv->ack_number == sent->sequence_number) {
 		   return 0;
 	   }
 	   else {
@@ -94,15 +98,15 @@ int checkPacket(Packet* sent, Packet* recv) {
 	   }
 }
 
-Packet* receiveMessage(int sockfd, struct addrinfo* server) {
+void receiveMessage(int sockfd, struct addrinfo* server, Packet* packet) {
 	char buffer[sizeof(Packet)];
-	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, server->ai_addr, &server->ai_addrlen);
+	int recvfrom_rv = recvfrom(sockfd, &packet, sizeof(Packet), 0, server->ai_addr, &server->ai_addrlen);
     if(recvfrom_rv < 0) {
         fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
         exit(1);
     }
 
-	return extractPacket(buffer);
+	//return extractPacket(buffer);
 }
 
 int setAudioData(Packet* packet, AudioInfo* info) {
@@ -123,7 +127,7 @@ int main (int argc, char *argv [])
 	char buffer[BUFSIZE];
 	struct addrinfo hints, *server;
 	fd_set read_set;
-	AudioInfo* audioinfo = {0, 0, 0};
+	AudioInfo* audioinfo = {0};
 	Packet* send_packet, *recv_packet;
 
 	FD_ZERO(&read_set);
@@ -147,15 +151,15 @@ int main (int argc, char *argv [])
 
 	do {
 		sendMessage(server_fd, send_packet, server, argv[2]);
-
+		printf("done");
 	FD_SET(server_fd, &read_set);
 	int sync_rv = syncWithServer(server_fd, &read_set, &timeout);
 	if(sync_rv == 1) {
 		printf("The packet was lost.\n");
 	}
 	else if(FD_ISSET(server_fd, &read_set) && sync_rv == 0){
-		recv_packet = receiveMessage(server_fd, server);
-		if(recv_packet->header->syn_bit == 1) { // open output
+		receiveMessage(server_fd, server, recv_packet);
+		if(recv_packet->syn_bit == 1) { // open output
 			audio_fd = setAudioData(recv_packet, audioinfo);
 		}
 
@@ -166,8 +170,8 @@ int main (int argc, char *argv [])
 		}
 		else {
 			write(audio_fd, recv_packet->data, sizeof(recv_packet->data));
-			send_packet->header->sequence_number++;
-			send_packet->header->ack_number = recv_packet->header->sequence_number;
+			send_packet->sequence_number++;
+			send_packet->ack_number = recv_packet->sequence_number;
 		}
 	}
 
@@ -235,4 +239,3 @@ int main (int argc, char *argv [])
 	
 	return 0 ;
 }
-

@@ -56,7 +56,7 @@ void serializePacket(Packet* packet, char* buf) {
     memcpy((packet_buffer + byte_offset), header_buffer, sizeof(header_buffer));
     byte_offset += sizeof(header_buffer);
 
-    memcpy((packet_buffer + byte_offset), packet->data, sizeof(packet->data));
+    memcpy((packet_buffer + byte_offset), &packet->data, sizeof(packet->data));
     byte_offset += sizeof(packet->data);
 
     buf = packet_buffer;
@@ -76,11 +76,11 @@ Packet* extractPacket(char buffer[sizeof(Packet)]) {
     byte_offset += sizeof(two_byte_data);
 
     memcpy(&one_bit_data, (buffer + byte_offset), sizeof(one_bit_data));
-    header->syn_bit = ntohs(one_bit_data);
+    header->syn_bit = one_bit_data;
     byte_offset += sizeof(one_bit_data);
 
     memcpy(&one_bit_data, (buffer + byte_offset), sizeof(one_bit_data));
-    header->fin_bit = ntohs(one_bit_data);
+    header->fin_bit = one_bit_data;
     byte_offset += sizeof(one_bit_data);
 
     memcpy(&four_byte_data, (buffer + byte_offset), sizeof(four_byte_data));
@@ -99,7 +99,7 @@ Packet* extractPacket(char buffer[sizeof(Packet)]) {
 
 
 void serializeInfo(AudioInfo* info, char* buf){
-    uint32_t four_byte_data;
+    int32_t four_byte_data;
     int byte_offset = 0;
 
     four_byte_data = htonl(info->channels);
@@ -118,7 +118,7 @@ void serializeInfo(AudioInfo* info, char* buf){
 AudioInfo* extractInfo(char buffer[sizeof(AudioInfo)]) {
     AudioInfo* info = malloc(sizeof(AudioInfo));
 
-    uint32_t four_byte_data;
+    int32_t four_byte_data;
     int byte_offset = 0;
 
     memcpy(&four_byte_data, buffer + byte_offset, sizeof(four_byte_data));

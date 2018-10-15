@@ -11,7 +11,7 @@ DEPS = $(wildcard *.h)
 	$(CC) $(CFLAGS) -shared -nostdlib -fPIC -g $+ -o $@
 
 %.o : %.c
-	${CC} ${CFLAGS} -c $^ -o $@
+	${CC} ${CFLAGS} -c -g $^ -o $@
 
 ####################### TARGETS
 

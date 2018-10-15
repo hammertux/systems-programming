@@ -44,6 +44,7 @@ int stream_data(int client_fd)
 	server_filterfunc pfunc;
 	char *datafile, *libfile;
 	char buffer[BUFSIZE];
+	AudioInfo* info;
 	
 	// TO IMPLEMENT
 	// receive a control packet from the client 
@@ -54,7 +55,7 @@ int stream_data(int client_fd)
 	}
 	
 	// open input
-	data_fd = aud_readinit(datafile, &sample_rate, &sample_size, &channels);
+	data_fd = aud_readinit(datafile, &info->sample_rate, &info->sample_size, &info->channels);
 	if (data_fd < 0){
 		printf("failed to open datafile %s, skipping request\n",datafile);
 		return -1;
@@ -166,16 +167,23 @@ void sendMessage(int sockfd, Packet* packet, struct sockaddr_in* client, AudioIn
 	if(packet == NULL) {
 		PacketHeader* header = buildHeader(1, 0, sizeof(PacketHeader) + sizeof(Packet));
 		header->syn_bit = 1;
-		packet->header = header;
+		packet->sequence_number = header->sequence_number;
+		packet->ack_number = header->ack_number;
+		packet->fin_bit = 0;
+		packet->syn_bit = 1;
+		packet->size = header->size;
 		int aud_read = aud_readinit(file_name, &info->sample_rate, &info->sample_size, &info->channels);
 		char buffer[MAX_BUFFER];
-		serializeInfo(info, buffer);
+		//serializeInfo(info, buffer);
+		memcpy(&buffer, &info->sample_rate, sizeof(int32_t));
+		memcpy(&buffer + 4, &info->sample_size, sizeof(int32_t));
+		memcpy(&buffer + 8, &info->channels, sizeof(int32_t));
 		strncpy(packet->data, buffer, MAX_BUFFER);
 	}
 
 	char buffer[sizeof(Packet)];
-	serializePacket(packet, buffer);
-	int sendto_rv = sendto(sockfd, buffer, sizeof(Packet), 0, (struct sockaddr* ) client, from_len);
+	//serializePacket(packet, buffer);
+	int sendto_rv = sendto(sockfd, packet, sizeof(Packet), 0, (struct sockaddr* ) client, *from_len);
 
 	if(sendto_rv < 0) {
         fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
@@ -183,25 +191,25 @@ void sendMessage(int sockfd, Packet* packet, struct sockaddr_in* client, AudioIn
     }
 }
 
-int checkPacket(Packet* sent, Packet* recv) {
-	if(recv->header->sequence_number == (sent->header->sequence_number + 1) &&
-	   recv->header->ack_number == sent->header->sequence_number) {
-		   return 0;
-	   }
-	   else {
-		   return 1;
-	   }
-}
+// int checkPacket(Packet* sent, Packet* recv) {
+// 	if(recv->header->sequence_number == (sent->header->sequence_number + 1) &&
+// 	   recv->header->ack_number == sent->header->sequence_number) {
+// 		   return 0;
+// 	   }
+// 	   else {
+// 		   return 1;
+// 	   }
+// }
 
-Packet* receiveMessage(int sockfd, struct sockaddr_in* client, socklen_t from_len) {
+void receiveMessage(int sockfd, Packet* packet, struct sockaddr_in* client, socklen_t from_len) {
 	char buffer[sizeof(Packet)];
-	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, (struct sockaddr* ) client, from_len);
+	int recvfrom_rv = recvfrom(sockfd, packet, sizeof(Packet), 0, (struct sockaddr* ) client, &from_len);
     if(recvfrom_rv < 0) {
         fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
         exit(1);
     }
 
-	return extractPacket(buffer);
+	//return extractPacket(buffer);
 }
 
 /// the main loop, continuously waiting for clients
@@ -215,10 +223,15 @@ int main (int argc, char **argv)
 	}
 
 	fd_set read_set;
-	struct timeval timeout = {2, 500000};
+	struct timeval timeout;
+	timeout.tv_sec = 3;
+	timeout.tv_usec = 500000;
 
 	struct sockaddr_in client, server;
 	socklen_t from_len = sizeof(client);
+	Packet* recv_packet, *send_packet;
+	char* filename;
+	AudioInfo* info = {0};
 
 	memset(&server, 0, sizeof(server));
 	memset(&client, 0, sizeof(client));
@@ -233,7 +246,14 @@ int main (int argc, char **argv)
 	signal(SIGINT, sigint_handler );	// trap Ctrl^C signals
 
 	do {
-		if(FD_ISSET(sockfd, &read_set) && sync_rv == 0){}
+		if(FD_ISSET(sockfd, &read_set) && sync_rv == 0){
+			receiveMessage(sockfd, recv_packet, &client, from_len);
+			if(recv_packet->syn_bit) {
+				filename = recv_packet->data;
+			}
+			sendMessage(sockfd, send_packet, &client, info, filename, &from_len);
+		}
+
 
 	}while(!breakloop);
 
