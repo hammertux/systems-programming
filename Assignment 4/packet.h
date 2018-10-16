@@ -18,34 +18,32 @@
 
 typedef _Bool uint1_t; //for header bits
 
-typedef struct __attribute__((packed)) _packetheader {
-    //unsigned char* command;//for filters
-    uint32_t sequence_number;
-    uint32_t ack_number;
-    uint1_t syn_bit;
-    uint1_t fin_bit;
-    uint16_t size;
-}PacketHeader;
+typedef struct __attribute__((packed)) _syncpacket {
+    char file[MAX_BUFFER];
+    char library[MAX_BUFFER];
+}SyncPacket;
 
 
 typedef struct __attribute__((packed)) _packet {
     uint32_t sequence_number;
     uint32_t ack_number;
-    uint1_t syn_bit;
-    uint1_t fin_bit;
     uint16_t size;
     char data[MAX_BUFFER];
 }Packet;
 
-PacketHeader* buildHeader(uint32_t seq_num, uint32_t ack, uint16_t size);//, unsigned char* cmd);
-
-Packet* buildPacket(PacketHeader* header, char buffer[MAX_BUFFER]);
+Packet* buildPacket(char buffer[MAX_BUFFER], uint32_t seq_num, uint32_t ack, uint16_t size);
 
 void serializePacket(Packet* packet, char* buf);
 
 Packet* extractPacket(char buffer[sizeof(Packet)]);
 
-void printPacket(Packet* packet);
+SyncPacket* initSync(const char* filename, const char* lib);
+
+void printPacket(Packet* packet, const char* s_or_r);
+
+AudioInfo* initInfo(int32_t size, int32_t rate, int32_t channels);
+
+void freeAudioInfo(AudioInfo* info);
 
 void serializeInfo(AudioInfo* info, char* buf);
 

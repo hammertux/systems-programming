@@ -65,22 +65,10 @@ int syncWithServer(int sockfd, fd_set* sync, struct timeval* timeout) {
     }
 }
 
-void sendMessage(int sockfd, Packet* packet, struct addrinfo* server, const char* file_name) {
-	if(packet == NULL) {
-		PacketHeader* header = buildHeader(0, 0, sizeof(PacketHeader) + sizeof(Packet));
-		header->syn_bit = 1;
-		packet->sequence_number = header->sequence_number;
-		packet->ack_number = header->ack_number;
-		packet->fin_bit = 0;
-		packet->syn_bit = 1;
-		packet->size = header->size;
-		strncpy(packet->data, file_name, MAX_BUFFER);
-	}
-
-	char buffer[sizeof(Packet)];
-	//serializePacket(packet, buffer);
-
-	int sendto_rv = sendto(sockfd, &packet, sizeof(Packet), 0, server->ai_addr, server->ai_addrlen);
+void sendMessage(int sockfd, Packet* packet, struct addrinfo* server) {
+	
+	int sendto_rv = sendto(sockfd, packet, sizeof(Packet), 0, server->ai_addr, server->ai_addrlen);
+	printf("SENT: %d\n", sendto_rv);
 
 	if(sendto_rv < 0) {
         fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
@@ -100,17 +88,14 @@ int checkPacket(Packet* sent, Packet* recv) {
 
 void receiveMessage(int sockfd, struct addrinfo* server, Packet* packet) {
 	char buffer[sizeof(Packet)];
-	int recvfrom_rv = recvfrom(sockfd, &packet, sizeof(Packet), 0, server->ai_addr, &server->ai_addrlen);
+	int recvfrom_rv = recvfrom(sockfd, packet, sizeof(Packet), 0, server->ai_addr, &server->ai_addrlen);
     if(recvfrom_rv < 0) {
         fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
         exit(1);
     }
-
-	//return extractPacket(buffer);
 }
 
-int setAudioData(Packet* packet, AudioInfo* info) {
-	info = extractInfo(packet->data);
+int setAudioData(AudioInfo* info) {
 	int write_fd = aud_writeinit(info->sample_rate, info->sample_size, info->channels);
 	if (write_fd < 0){
 		printf("error: unable to open audio output.\n");
@@ -120,15 +105,41 @@ int setAudioData(Packet* packet, AudioInfo* info) {
 	return write_fd;
 }
 
+void sendInitPacket(int sockfd, struct addrinfo* server, SyncPacket* sync) {
+
+	int sendto_rv = sendto(sockfd, sync, sizeof(SyncPacket), 0, server->ai_addr, server->ai_addrlen);
+	printf("SENT: %d\n", sendto_rv);
+
+	if(sendto_rv < 0) {
+        fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
+        exit(1);
+    }
+}
+
+AudioInfo* recvAudioInfo(int sockfd, struct addrinfo* server) {
+	AudioInfo* info = malloc(sizeof(AudioInfo));
+	int recvfrom_rv = recvfrom(sockfd, info, sizeof(AudioInfo), 0, server->ai_addr, &server->ai_addrlen);
+    if(recvfrom_rv < 0) {
+        fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
+        exit(1);
+    }
+
+	return info;
+}
+
 int main (int argc, char *argv [])
 {
 	int server_fd, audio_fd;
+	int write_rv;
+	int starting = 1;
 	client_filterfunc pfunc;
 	char buffer[BUFSIZE];
 	struct addrinfo hints, *server;
 	fd_set read_set;
-	AudioInfo* audioinfo = {0};
-	Packet* send_packet, *recv_packet;
+	AudioInfo* audioinfo = NULL;
+	Packet* send_packet = buildPacket(NULL, 0, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
+	SyncPacket* start_connection = initSync(argv[2], "");
+
 
 	FD_ZERO(&read_set);
 
@@ -150,36 +161,53 @@ int main (int argc, char *argv [])
 	server_fd = setupSocket(server);
 
 	do {
-		sendMessage(server_fd, send_packet, server, argv[2]);
-		printf("done");
-	FD_SET(server_fd, &read_set);
-	int sync_rv = syncWithServer(server_fd, &read_set, &timeout);
-	if(sync_rv == 1) {
-		printf("The packet was lost.\n");
-	}
-	else if(FD_ISSET(server_fd, &read_set) && sync_rv == 0){
-		receiveMessage(server_fd, server, recv_packet);
-		if(recv_packet->syn_bit == 1) { // open output
-			audio_fd = setAudioData(recv_packet, audioinfo);
+		if(starting) {
+			sendInitPacket(server_fd, server, start_connection);
+			printf("----INIT----\nfilename: %s\nlibrary: %s\n", start_connection->file, start_connection->library);
 		}
 
-		int check = checkPacket(send_packet, recv_packet);
-
-		if(check == 1) {
-			sendMessage(server_fd, send_packet, server, argv[1]);
+		FD_SET(server_fd, &read_set);
+		int sync_rv = syncWithServer(server_fd, &read_set, &timeout);
+		if(sync_rv == 1) {
+			printf("The packet was lost.\n");
 		}
-		else {
-			write(audio_fd, recv_packet->data, sizeof(recv_packet->data));
+		else if(FD_ISSET(server_fd, &read_set) && sync_rv == 0){
+			if(starting == 1) {
+				audioinfo = recvAudioInfo(server_fd, server);
+				audio_fd = setAudioData(audioinfo);
+				printf("AUDIO_FD = %d", audio_fd);
+				starting = 0;
+			}
+			else {
+				receiveMessage(server_fd, server, recv_packet);
+				//sleep(5);
+				//int check = checkPacket(send_packet, recv_packet);
+				//if(check == 0) {
+					write_rv = write(audio_fd, recv_packet->data, recv_packet->size);
+					if(write_rv < 0) {
+						fprintf(stderr, "Could not write to audio fd: %s", strerror(errno));
+						return 1;
+					}
+
+					sendMessage(server_fd, send_packet, server);
 			send_packet->sequence_number++;
 			send_packet->ack_number = recv_packet->sequence_number;
+					
+				//}
+				//else {
+					//IMPLEMENT RESEND ACK
+					//breakloop = 1;
+				//}
+				
+			}
+
+			
 		}
-	}
+		else {
+			
+		}
 
 	}while(!breakloop);
-
-	
-
-	
 
 	printf ("SysProg2006 network client\n");
 	printf ("handed in by VOORBEELDSTUDENT\n");
