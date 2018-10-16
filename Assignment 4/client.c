@@ -133,17 +133,20 @@ int main (int argc, char *argv [])
 	int write_rv;
 	int starting = 1;
 	client_filterfunc pfunc;
-	char buffer[BUFSIZE];
+	char buffer[sizeof(Packet)];
 	struct addrinfo hints, *server;
 	fd_set read_set;
 	AudioInfo* audioinfo = NULL;
-	Packet* send_packet = buildPacket(NULL, 0, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
+	Packet* send_packet = buildPacket(NULL, 1, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
 	SyncPacket* start_connection = initSync(argv[2], "");
+	int connection_lost = 0;
 
 
 	FD_ZERO(&read_set);
 
 	struct timeval timeout = {3, 0};
+
+	int counter = 0;
 
 
 	memset(&hints, 0, sizeof(hints));
@@ -157,6 +160,21 @@ int main (int argc, char *argv [])
 		fprintf(stderr, "Error: Hostname unresolved %s\n", gai_strerror(getaddrinfo_rv));
 		return 1;
     }
+
+	// open the library on the clientside if one is requested
+	if (argv[3] && strcmp(argv[3],"")){
+		// try to open the library, if one is requested
+		pfunc = NULL;
+		if (!pfunc){
+			printf("failed to open the requested library. breaking hard\n");
+			return -1;
+		}
+		printf("opened libraryfile %s\n",argv[3]);
+	}
+	else{
+		pfunc = NULL;
+		printf("not using a filter\n");
+	}
 
 	server_fd = setupSocket(server);
 
@@ -180,9 +198,12 @@ int main (int argc, char *argv [])
 			}
 			else {
 				receiveMessage(server_fd, server, recv_packet);
-				//sleep(5);
-				//int check = checkPacket(send_packet, recv_packet);
-				//if(check == 0) {
+				if(recv_packet->fin_bit == 1) {
+					printf("Server finished streaming requested file!");
+					send_packet->fin_bit = 1;
+					sendMessage(server_fd, send_packet, server);
+					exit(0);
+				}
 					write_rv = write(audio_fd, recv_packet->data, recv_packet->size);
 					if(write_rv < 0) {
 						fprintf(stderr, "Could not write to audio fd: %s", strerror(errno));
@@ -190,21 +211,24 @@ int main (int argc, char *argv [])
 					}
 
 					sendMessage(server_fd, send_packet, server);
-			send_packet->sequence_number++;
-			send_packet->ack_number = recv_packet->sequence_number;
 					
-				//}
-				//else {
-					//IMPLEMENT RESEND ACK
-					//breakloop = 1;
-				//}
+					send_packet->sequence_number++;
+					send_packet->ack_number = recv_packet->sequence_number;
+					if(counter == 40) {
+						send_packet->sequence_number--;
+					}
+					else if(counter == 41) {
+						send_packet->sequence_number ++;
+					}
+					
 				
 			}
 
-			
+			counter++;
 		}
 		else {
-			
+			breakloop = 1;
+			exit(0);
 		}
 
 	}while(!breakloop);
@@ -222,20 +246,7 @@ int main (int argc, char *argv [])
 	
 	
 	
-	// open the library on the clientside if one is requested
-	if (argv[3] && strcmp(argv[3],"")){
-		// try to open the library, if one is requested
-		pfunc = NULL;
-		if (!pfunc){
-			printf("failed to open the requested library. breaking hard\n");
-			return -1;
-		}
-		printf("opened libraryfile %s\n",argv[3]);
-	}
-	else{
-		pfunc = NULL;
-		printf("not using a filter\n");
-	}
+	
 	
 	// start receiving data
 	{

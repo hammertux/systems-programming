@@ -199,8 +199,7 @@ void sendInfo(int sockfd, struct sockaddr_in* client, AudioInfo* info, socklen_t
 }
 
 int checkPacket(Packet* sent, Packet* recv) {
-	if(recv->sequence_number == (sent->sequence_number + 1) &&
-	   recv->ack_number == sent->sequence_number) {
+	if(recv->sequence_number == sent->ack_number) {
 		   return 0;
 	   }
 	   else {
@@ -219,66 +218,83 @@ int main (int argc, char **argv)
 	}
 
 	int read_rv;
-	int starting = 1;
+	int sockfd;
+	int starting = 1, active = 1;
 	fd_set read_set;
 	struct timeval timeout;
 	timeout.tv_sec = 3;
 	timeout.tv_usec = 500000;
+	char buffer[sizeof(Packet)];
 
 	struct sockaddr_in client, server;
 	socklen_t from_len = sizeof(client);
-	Packet* send_packet = buildPacket(NULL, 1, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
+	Packet* send_packet = buildPacket(NULL, 0, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
 	SyncPacket* start_connection = NULL;
 	char* filename;
 	AudioInfo* info = initInfo(0, 0, 0);
 
 	memset(&server, 0, sizeof(server));
 	memset(&client, 0, sizeof(client));
-
+	sockfd = setupSocket(&server);
 	FD_ZERO(&read_set);
 
-	int sockfd = setupSocket(&server);
+	while(active) {
+		starting = 1;
 
-	FD_SET(sockfd, &read_set);
-	int sync_rv = syncWithClient(sockfd, &read_set, &timeout);
+		FD_SET(sockfd, &read_set);
+		int sync_rv = syncWithClient(sockfd, &read_set, &timeout);
 
-	signal(SIGINT, sigint_handler );	// trap Ctrl^C signals
-	uint16_t read_fd;
-	do {
+		signal(SIGINT, sigint_handler );	// trap Ctrl^C signals
+		uint16_t read_fd;
+	
+
 		
-		if(FD_ISSET(sockfd, &read_set) && sync_rv == 0){
-			if(starting) {
-				start_connection = recvInitPacket(sockfd, &client, from_len);
-				read_fd = aud_readinit(start_connection->file, &info->sample_rate, &info->sample_size, &info->channels);
-				sendInfo(sockfd, &client, info, from_len);
-				starting = 0;
-			}
-			
-			
-			read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
-			send_packet->size = read_rv;
-					send_packet->ack_number++;
+		do {
+			if(FD_ISSET(sockfd, &read_set) && sync_rv == 0){
+				if(starting) {
+					start_connection = recvInitPacket(sockfd, &client, from_len);
+					read_fd = aud_readinit(start_connection->file, &info->sample_rate, &info->sample_size, &info->channels);
+					sendInfo(sockfd, &client, info, from_len);
+					starting = 0;
+				}
+				else {
+					int check = checkPacket(send_packet, recv_packet);
+					if(check == 1) {
+						printf("OOps");
+						sendMessage(sockfd, send_packet, &client, from_len);
+					}
+				}
+				
+				read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
+				if(read_rv == 0) {
+					printf("Successfully streamed the audio file to the client!");
+					send_packet->fin_bit = 1;
 					sendMessage(sockfd, send_packet, &client, from_len);
-			printf("READ: %d\n", read_rv);
-			if(read_rv < 0) {
-				fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
-				return 1;
-			}
-			else {
-				receiveMessage(sockfd, recv_packet, &client, from_len);
-				//printPacket(recv_packet, "r");
-				//sleep(5);
-				//SEND MESSAGE OF SIZE READ_RV
-				int check = checkPacket(send_packet, recv_packet);
-				if(check == 0) {
+					receiveMessage(sockfd, recv_packet, &client, from_len);
+					if(recv_packet->fin_bit == 1) {//mention two army problem in report
+						break;
+					}
 					
 				}
+				send_packet->size = read_rv;
+				send_packet->ack_number++;
+				send_packet->sequence_number++;
+				sendMessage(sockfd, send_packet, &client, from_len);
+				printf("READ: %d\n", read_rv);
+				if(read_rv < 0) {
+					fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
+					return 1;
+				}
+				else {
+					receiveMessage(sockfd, recv_packet, &client, from_len);
+					
+					
+				}
+
 			}
-
-		}
-		
-	}while(!breakloop);
-
+			
+		}while(!breakloop);
+	}
 	
 
 	int close_rv = close(sockfd);

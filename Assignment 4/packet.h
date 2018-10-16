@@ -27,6 +27,7 @@ typedef struct __attribute__((packed)) _syncpacket {
 typedef struct __attribute__((packed)) _packet {
     uint32_t sequence_number;
     uint32_t ack_number;
+    uint1_t fin_bit;
     uint16_t size;
     char data[MAX_BUFFER];
 }Packet;

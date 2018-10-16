@@ -5,6 +5,7 @@ Packet* buildPacket(char buffer[MAX_BUFFER], uint32_t seq_num, uint32_t ack, uin
     packet->sequence_number = seq_num;
     packet->ack_number = ack;
     packet->size = size;
+    packet->fin_bit = 0;
     
     return packet;
 }
@@ -19,7 +20,7 @@ SyncPacket* initSync(const char* filename, const char* lib) {
 
 void serializePacket(Packet* packet, char* buf) {
     int byte_offset = 0;
-    char* packet_buffer = malloc(sizeof(Packet));
+    char packet_buffer[sizeof(Packet)];
 
     uint32_t four_byte_data;
     uint1_t one_bit_data;
@@ -69,6 +70,8 @@ Packet* extractPacket(char buffer[sizeof(Packet)]) {
     byte_offset += sizeof(four_byte_data);
 
     memcpy(&packet->data, (buffer + byte_offset), MAX_BUFFER);
+
+    printPacket(packet, "r");
 
     return packet;
 }
