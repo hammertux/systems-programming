@@ -197,14 +197,23 @@ int main (int argc, char *argv [])
 				audio_fd = setAudioData(audioinfo);
 				printf("AUDIO_FD = %d", audio_fd);
 				starting = 0;
-				sleep(5);
+				//sleep(5);
 			}
 			else {
 				receiveMessage(server_fd, server, recv_packet);
 				if(recv_packet->fin_bit == 1) {
 					send_packet->fin_bit = 1;
 					sendMessage(server_fd, send_packet, server);
+					printPacket(send_packet, "s");
+			
+					receiveMessage(server_fd, server, recv_packet);
+					printPacket(recv_packet, "r");
 					printf("Server finished streaming requested file!");
+					freeaddrinfo(server);
+					free(send_packet);
+					free(recv_packet);
+					free(start_connection);
+					free(audioinfo);
 					return 0;
 				}
 
@@ -218,12 +227,12 @@ int main (int argc, char *argv [])
 					send_packet->sequence_number++;
 					send_packet->ack_number = recv_packet->sequence_number;
 
-					if(counter >= 500 && counter <=1000) {
-						send_packet->sequence_number--;
-					}
-					if(counter == 1001) {
-						send_packet->ack_number = recv_packet->sequence_number;
-					}
+					// if(counter >= 500 && counter <=1000) {
+					// 	send_packet->sequence_number--;
+					// }
+					// if(counter == 1001) {
+					// 	send_packet->ack_number = recv_packet->sequence_number;
+					// }
 				if(checkPacket(send_packet, recv_packet) == 0) {
 					write_rv = write(audio_fd, recv_packet->data, recv_packet->size);
 					if(write_rv < 0) {

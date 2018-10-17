@@ -239,14 +239,18 @@ int main (int argc, char **argv)
 	memset(&server, 0, sizeof(server));
 	memset(&client, 0, sizeof(client));
 	sockfd = setupSocket(&server);
-	FD_ZERO(&read_set);
+	
 
 	while(active) {
+		// breakloop = 0;
+		FD_ZERO(&read_set);
 		starting = 1;
 		Packet* send_packet = buildPacket(NULL, 0, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
-	SyncPacket* start_connection = NULL;
-	char* filename;
-	AudioInfo* info = initInfo(0, 0, 0);
+		SyncPacket* start_connection = NULL;
+		send_packet->fin_bit = 0;
+		recv_packet->fin_bit = 0;
+		char* filename;
+		AudioInfo* info = initInfo(0, 0, 0);
 		
 
 		signal(SIGINT, sigint_handler );	// trap Ctrl^C signals
@@ -258,6 +262,7 @@ int main (int argc, char **argv)
 		do {
 			
 			if(FD_ISSET(sockfd, &read_set) && sync_rv == 0){
+				breakloop = 0;
 				if(starting) {
 					start_connection = recvInitPacket(sockfd, &client, from_len);
 					
@@ -271,7 +276,7 @@ int main (int argc, char **argv)
 					//info->channels*=2;
 					sendInfo(sockfd, &client, info, from_len);
 					starting = 0;
-					sleep(5);
+					//sleep(5);
 				}
 				else {
 					int check = checkPacket(send_packet, recv_packet);
@@ -282,33 +287,37 @@ int main (int argc, char **argv)
 					}
 					else {
 						read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
-						if(read_rv == 0) {
-							
+						if(read_rv < MAX_BUFFER) {
 							send_packet->fin_bit = 1;
+							send_packet->size = read_rv;
+							send_packet->ack_number++;
+							send_packet->sequence_number++;
+							sendMessage(sockfd, send_packet, &client, from_len);	
+							//receiveMessage(sockfd, recv_packet, &client, from_len);
+							//printPacket(recv_packet, "r");
+							
+						}
+						else{
+							send_packet->size = read_rv;
+							send_packet->ack_number++;
+							send_packet->sequence_number++;
 							sendMessage(sockfd, send_packet, &client, from_len);
-							//break;
-							receiveMessage(sockfd, recv_packet, &client, from_len);
-							printPacket(recv_packet, "r");
-							if(recv_packet->fin_bit == 1) {//mention two army problem in report
-								printf("Successfully streamed the audio file to the client!");
-								select(sockfd+1, &read_set, NULL, NULL, NULL);
+							printf("READ: %d\n", read_rv);
+							if(read_rv < 0) {
+								fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
 								break;
 							}
-						}
-						// int i = 0;
-						// 	for(i = 0; i < MAX_BUFFER; i++) {
-						// 		send_packet->data[i] *= 5;
-						// 	}
-						send_packet->size = read_rv;
-						send_packet->ack_number++;
-						send_packet->sequence_number++;
-						sendMessage(sockfd, send_packet, &client, from_len);
-						printf("READ: %d\n", read_rv);
-						if(read_rv < 0) {
-							fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
-							break;
+							
 						}
 						receiveMessage(sockfd, recv_packet, &client, from_len);
+						if(recv_packet->fin_bit == 1) {//mention two army problem in report
+								printf("Successfully streamed the audio file to the client!");
+								starting = 1;
+								//free(send_packet);
+								//free(recv_packet);
+								close(read_fd);
+								break;
+							}
 					}
 				
 					
@@ -321,8 +330,8 @@ int main (int argc, char **argv)
 
 			}
 			else if(sync_rv == 1) {
-				//fprintf(stderr, "Client not responding. Ready for new requests.");
-				break;
+				fprintf(stderr, "Client not responding. Ready for new requests.");
+				breakloop = 1;
 			}
 			
 		}while(!breakloop);

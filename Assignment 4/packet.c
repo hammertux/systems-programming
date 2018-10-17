@@ -87,7 +87,7 @@ void extractPacket(Packet* packet, char buffer[sizeof(Packet)]) {
         exit(1);
     }
 
-    printPacket(packet, "r");
+    //printPacket(packet, "r");
 
     //return packet;
 }
@@ -146,13 +146,13 @@ AudioInfo* extractInfo(char buffer[sizeof(AudioInfo)]) {
 
 
 void printPacket(Packet* packet, const char* s_or_r) {
-    if(strcmp(s_or_r, "s")) {
+    if(s_or_r == "s") {
         printf("-------------------SENDING--------------------\n");
         printf("Header:\nSize: %d\nSEQ: %d\nACK: %d\nFIN: %d\n\nPacket:\nData: %s\n", packet->size, packet->sequence_number,
             packet->ack_number, packet->fin_bit, packet->data);
         printf("-------------------END SENDING------------------\n");
     }
-    else if(strcmp(s_or_r, "r")) {
+    else if(s_or_r == "r") {
         printf("-------------------RECEIVING--------------------\n");
         printf("Header:\nSize: %d\nSEQ: %d\nACK: %d\nFIN: %d\n\nPacket:\nData: %s\n", packet->size, packet->sequence_number,
             packet->ack_number, packet->fin_bit, packet->data);
