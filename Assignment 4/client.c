@@ -222,9 +222,6 @@ int main (int argc, char *argv [])
 					free(audioinfo);
 					return 1;
 				}
-
-				
-
 					
 				}
 
@@ -233,22 +230,22 @@ int main (int argc, char *argv [])
 					send_packet->sequence_number++;
 					send_packet->ack_number = recv_packet->sequence_number;
 
-					// if(counter >= 500 && counter <=1000) {
-					// 	send_packet->sequence_number--;
-					// }
-					// if(counter == 1001) {
-					// 	send_packet->ack_number = recv_packet->sequence_number;
-					// }
+					if(counter >= 500 && counter <=1000) {
+						send_packet->sequence_number--;
+					}
+					if(counter == 1001) {
+						send_packet->ack_number = recv_packet->sequence_number;
+					}
 				if(checkPacket(send_packet, recv_packet) == 0) {
 					write_rv = write(audio_fd, recv_packet->data, recv_packet->size);
 					if(write_rv < 0) {
 						fprintf(stderr, "Could not write to audio fd: %s", strerror(errno));
 						return 1;
 					}
-					
-					
-				
-			}
+				}
+				else {
+					sendMessage(server_fd, send_packet, server);
+				}
 
 			counter++;
 		}
@@ -262,7 +259,7 @@ int main (int argc, char *argv [])
 	sendMessage(server_fd, send_packet, server);
 
 	printf ("SysProg2006 network client\n");
-	printf ("handed in by VOORBEELDSTUDENT\n");
+	printf ("handed in by Andrea Di Dio\n");
 	
 	signal( SIGINT, sigint_handler );	// trap Ctrl^C signals
 	
