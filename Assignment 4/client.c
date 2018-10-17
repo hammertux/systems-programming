@@ -66,8 +66,9 @@ int syncWithServer(int sockfd, fd_set* sync, struct timeval* timeout) {
 }
 
 void sendMessage(int sockfd, Packet* packet, struct addrinfo* server) {
-	
-	int sendto_rv = sendto(sockfd, packet, sizeof(Packet), 0, server->ai_addr, server->ai_addrlen);
+	char buffer[sizeof(Packet)];
+	serializePacket(packet, buffer);
+	int sendto_rv = sendto(sockfd, &buffer, sizeof(Packet), 0, server->ai_addr, server->ai_addrlen);
 	printf("SENT: %d\n", sendto_rv);
 
 	if(sendto_rv < 0) {
@@ -88,7 +89,8 @@ int checkPacket(Packet* sent, Packet* recv) {
 
 void receiveMessage(int sockfd, struct addrinfo* server, Packet* packet) {
 	char buffer[sizeof(Packet)];
-	int recvfrom_rv = recvfrom(sockfd, packet, sizeof(Packet), 0, server->ai_addr, &server->ai_addrlen);
+	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, server->ai_addr, &server->ai_addrlen);
+	extractPacket(packet, buffer);
     if(recvfrom_rv < 0) {
         fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
         exit(1);
@@ -188,6 +190,7 @@ int main (int argc, char *argv [])
 		int sync_rv = syncWithServer(server_fd, &read_set, &timeout);
 		if(sync_rv == 1) {
 			printf("The packet was lost.\n");
+			exit(1);
 		}
 		else if(FD_ISSET(server_fd, &read_set) && sync_rv == 0){
 			if(starting == 1) {
@@ -195,6 +198,7 @@ int main (int argc, char *argv [])
 				audio_fd = setAudioData(audioinfo);
 				printf("AUDIO_FD = %d", audio_fd);
 				starting = 0;
+				sleep(5);
 			}
 			else {
 				receiveMessage(server_fd, server, recv_packet);
@@ -214,12 +218,6 @@ int main (int argc, char *argv [])
 					
 					send_packet->sequence_number++;
 					send_packet->ack_number = recv_packet->sequence_number;
-					if(counter == 40) {
-						send_packet->sequence_number--;
-					}
-					else if(counter == 41) {
-						send_packet->sequence_number ++;
-					}
 					
 				
 			}

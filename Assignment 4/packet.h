@@ -36,7 +36,7 @@ Packet* buildPacket(char buffer[MAX_BUFFER], uint32_t seq_num, uint32_t ack, uin
 
 void serializePacket(Packet* packet, char* buf);
 
-Packet* extractPacket(char buffer[sizeof(Packet)]);
+void extractPacket(Packet* packet, char buffer[sizeof(Packet)]);
 
 SyncPacket* initSync(const char* filename, const char* lib);
 

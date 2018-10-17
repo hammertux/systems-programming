@@ -164,7 +164,9 @@ int setupSocket(struct sockaddr_in* server) {
 }
 
 void sendMessage(int sockfd, Packet* packet, struct sockaddr_in* client, socklen_t from_len) {
-	int send_rv = sendto(sockfd, packet, sizeof(Packet), 0, (struct sockaddr* )client, from_len);
+	char buffer[sizeof(Packet)];
+	serializePacket(packet, buffer);
+	int send_rv = sendto(sockfd, &buffer, sizeof(Packet), 0, (struct sockaddr* )client, from_len);
 	if(send_rv < 0) {
 		fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
 		exit(1);
@@ -172,7 +174,9 @@ void sendMessage(int sockfd, Packet* packet, struct sockaddr_in* client, socklen
 }
 
 void receiveMessage(int sockfd, Packet* packet, struct sockaddr_in* client, socklen_t from_len) {
-	int recvfrom_rv = recvfrom(sockfd, packet, sizeof(Packet), 0, (struct sockaddr* )client, &from_len);
+	char buffer[sizeof(Packet)];
+	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, (struct sockaddr* )client, &from_len);
+	extractPacket(packet, buffer);
     if(recvfrom_rv < 0) {
         fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
         exit(1);
@@ -256,20 +260,21 @@ int main (int argc, char **argv)
 					read_fd = aud_readinit(start_connection->file, &info->sample_rate, &info->sample_size, &info->channels);
 					sendInfo(sockfd, &client, info, from_len);
 					starting = 0;
+					sleep(5);
 				}
 				else {
 					int check = checkPacket(send_packet, recv_packet);
 					if(check == 1) {
-						printf("OOps");
-						sendMessage(sockfd, send_packet, &client, from_len);
+						//printf("OOps");
+						//sendMessage(sockfd, send_packet, &client, from_len);
 					}
-				}
 				
-				read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
+						read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
 				if(read_rv == 0) {
 					printf("Successfully streamed the audio file to the client!");
 					send_packet->fin_bit = 1;
 					sendMessage(sockfd, send_packet, &client, from_len);
+					break;
 					receiveMessage(sockfd, recv_packet, &client, from_len);
 					if(recv_packet->fin_bit == 1) {//mention two army problem in report
 						break;
@@ -290,6 +295,10 @@ int main (int argc, char **argv)
 					
 					
 				}
+					}
+				
+				
+				
 
 			}
 			

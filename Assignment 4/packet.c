@@ -26,16 +26,19 @@ void serializePacket(Packet* packet, char* buf) {
     uint1_t one_bit_data;
     uint16_t two_byte_data;
 
-    two_byte_data = htons(packet->size);
+    two_byte_data = htons(packet->sequence_number);
     memcpy((packet_buffer + byte_offset), &two_byte_data, sizeof(two_byte_data));
     byte_offset += sizeof(two_byte_data);
 
-    four_byte_data = htonl(packet->sequence_number);
+    four_byte_data = htonl(packet->ack_number);
     memcpy((packet_buffer + byte_offset), &four_byte_data, sizeof(four_byte_data));
     byte_offset += sizeof(four_byte_data);
 
+    one_bit_data = htons(packet->fin_bit);
+    memcpy((packet_buffer + byte_offset), &one_bit_data, sizeof(one_bit_data));
+    byte_offset += sizeof(one_bit_data);
 
-    four_byte_data = htonl(packet->ack_number);
+    four_byte_data = htonl(packet->size);
     memcpy((packet_buffer + byte_offset), &four_byte_data, sizeof(four_byte_data));
     byte_offset += sizeof(four_byte_data);
 
@@ -43,14 +46,18 @@ void serializePacket(Packet* packet, char* buf) {
 
     
 
-    memcpy((packet_buffer + byte_offset), packet->data, sizeof(packet->data));
-    byte_offset += sizeof(packet->data);
+    memcpy((&packet_buffer[byte_offset]), packet->data, MAX_BUFFER);
+    
+    if(memcmp(packet_buffer + byte_offset, packet->data, MAX_BUFFER) != 0) {
+        printf("NONOSERIALIZE\n\n");
+        exit(1);
+    }
 
-    buf = packet_buffer;
+    memcpy(buf, packet_buffer, sizeof(Packet));
 }
 
-Packet* extractPacket(char buffer[sizeof(Packet)]) {
-    Packet* packet = malloc(sizeof(Packet));
+void extractPacket(Packet* packet, char buffer[sizeof(Packet)]) {
+    //Packet* packet = malloc(sizeof(Packet));
 
     uint32_t four_byte_data;
     uint1_t one_bit_data;
@@ -58,22 +65,31 @@ Packet* extractPacket(char buffer[sizeof(Packet)]) {
     int byte_offset = 0;
 
     memcpy(&two_byte_data, (buffer + byte_offset), sizeof(two_byte_data));
-    packet->size = ntohs(two_byte_data);
+    packet->sequence_number = ntohs(two_byte_data);
     byte_offset += sizeof(two_byte_data);
-
-    memcpy(&four_byte_data, (buffer + byte_offset), sizeof(four_byte_data));
-    packet->sequence_number = ntohl(four_byte_data);
-    byte_offset += sizeof(four_byte_data);
 
     memcpy(&four_byte_data, (buffer + byte_offset), sizeof(four_byte_data));
     packet->ack_number = ntohl(four_byte_data);
     byte_offset += sizeof(four_byte_data);
 
-    memcpy(&packet->data, (buffer + byte_offset), MAX_BUFFER);
+    memcpy(&one_bit_data, (buffer + byte_offset), sizeof(one_bit_data));
+    packet->fin_bit = ntohl(one_bit_data);
+    byte_offset += sizeof(one_bit_data);
+
+    memcpy(&four_byte_data, (buffer + byte_offset), sizeof(four_byte_data));
+    packet->size = ntohl(four_byte_data);
+    byte_offset += sizeof(four_byte_data);
+
+    memcpy(packet->data, (buffer + byte_offset), MAX_BUFFER);
+
+    if(memcmp(buffer+byte_offset, packet->data, MAX_BUFFER) != 0) {
+        printf("NONOEXTRACT\n\n");
+        exit(1);
+    }
 
     printPacket(packet, "r");
 
-    return packet;
+    //return packet;
 }
 
 AudioInfo* initInfo(int32_t size, int32_t rate, int32_t channels) {
