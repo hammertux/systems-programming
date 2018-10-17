@@ -225,71 +225,75 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	}
 	sendInfo(sockfd, client, info, from_len);
 				
-	
+	read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
+			printf("READ: %d\n", read_rv);
+			if(read_rv < 0) {
+				fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
+				return -1;
+			}
 
-	do {
+	while(read_rv > 0) {
 		
+		int check = checkPacket(send_packet, recv_packet);
+		if(check == 1) {
+			printf("OOps");
+			sendMessage(sockfd, send_packet, client, from_len);
+			//receiveMessage(sockfd, recv_packet, client, from_len);
+		}
+		else {
+
+			read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
+			printf("READ: %d\n", read_rv);
+			if(read_rv < 0) {
+				fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
+				return -1;
+			}
+			
+			if(read_rv < MAX_BUFFER || read_rv == 0) {
+				send_packet->fin_bit = 1;
+				send_packet->size = read_rv;
+				send_packet->ack_number++;
+				send_packet->sequence_number++;
+				sendMessage(sockfd, send_packet, client, from_len);
+				printf("Successfully streamed the audio file to the client!");
+				//close(read_fd);
+				//free(send_packet);
+				//free(recv_packet);
+				//free(info);
+				
+			}
+			else{
+				send_packet->size = read_rv;
+				send_packet->ack_number++;
+				send_packet->sequence_number++;
+				sendMessage(sockfd, send_packet, client, from_len);
+			}
+			
+		}
 		
+		FD_SET(sockfd, read_set);
+		int sync_rv = syncWithClient(sockfd, read_set, &timeout);
 		if(FD_ISSET(sockfd, read_set) && sync_rv == 0){
-			
-			
-				int check = checkPacket(send_packet, recv_packet);
-				if(check == 1) {
-					printf("OOps");
-					sendMessage(sockfd, send_packet, client, from_len);
-					//receiveMessage(sockfd, recv_packet, client, from_len);
-				}
-				else {
-
-					read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
-					printf("READ: %d\n", read_rv);
-					if(read_rv < 0) {
-						fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
-						return -1;
-					}
-					
-					if(read_rv < MAX_BUFFER || read_rv == 0) {
-						send_packet->fin_bit = 1;
-						send_packet->size = read_rv;
-						send_packet->ack_number++;
-						send_packet->sequence_number++;
-						sendMessage(sockfd, send_packet, client, from_len);
-						printf("Successfully streamed the audio file to the client!");
-						close(read_fd);
-						free(send_packet);
-						free(recv_packet);
-						free(info);
-						return 0;
-						
-					}
-					else{
-						send_packet->size = read_rv;
-						send_packet->ack_number++;
-						send_packet->sequence_number++;
-						sendMessage(sockfd, send_packet, client, from_len);
-					}
-					
-				}
-			
-				receiveMessage(sockfd, recv_packet, client, from_len);
-				if(recv_packet->fin_bit == 1) {//mention two army problem in report
-					printf("Successfully streamed the audio file to the client!");
-					starting = 1;
-					free(send_packet);
-					free(recv_packet);
-					close(read_fd);
-					return 0;
-				}
+			receiveMessage(sockfd, recv_packet, client, from_len);
+			if(recv_packet->fin_bit == 1) {//mention two army problem in report
+				printf("Successfully streamed the audio file to the client!");
+				starting = 1;
+				//free(send_packet);
+				//free(recv_packet);
+				//close(read_fd);
+			}
 				
 		
 			
 		}
 		else if(sync_rv == 1) {
-			
+			printf("Client Timed out.");
 			return -1;
 		}
 		
-	}while(read_rv > 0);
+	}
+	close(read_fd);
+	return 0;
 }
 
 /// the main loop, continuously waiting for clients
@@ -310,45 +314,43 @@ int main (int argc, char **argv)
 	
 
 	memset(&server, 0, sizeof(server));
-	
+	memset(&client, 0, sizeof(client));
 	sockfd = setupSocket(&server);
 	
 
-	//while(active) {
+	while(!breakloop) {
 		// breakloop = 0;
-		memset(&client, 0, sizeof(client));
+		
 		fd_set read_set;
 		FD_ZERO(&read_set);
 		FD_SET(sockfd, &read_set);
 		int stream_rv;
+		char buffer[MAX_BUFFER];
 
-		if(breakloop == 1) {
-
+		int select_rv = select(sockfd+1, &read_set, NULL, NULL, NULL);
+		if(select_rv < 0) {
+			printf("Something went wrong!\n");
 		}
-		
 
 		signal(SIGINT, sigint_handler );	// trap Ctrl^C signals
-		if(select(sockfd+1, &read_set, NULL, NULL, NULL) > 0 && breakloop == 0) {
+		if(select_rv > 0) {
 			stream_rv = stream(sockfd, &read_set, &client, from_len, start_connection);
 		}
-		else {
-			//break;
-		}
 
-		if(stream_rv == 0) {
+		if(stream_rv < 0) {
+			printf("Something went wrong!\n");
+		}
+		else {
 			printf("Streaming Successful!!!\n");
 			free(start_connection);
 			select(sockfd+1, &read_set, NULL, NULL, NULL);
 		}
-		else {
-			printf("Something went wrong!\n");
-			select(sockfd+1, &read_set, NULL, NULL, NULL);
-		}
+		
 
 		
 		
 		//fprintf(stderr, "Client not responding. Ready for new requests.");
-	//}
+	}
 	
 
 	int close_rv = close(sockfd);

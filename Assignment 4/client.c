@@ -230,12 +230,12 @@ int main (int argc, char *argv [])
 					send_packet->sequence_number++;
 					send_packet->ack_number = recv_packet->sequence_number;
 
-					if(counter >= 500 && counter <=1000) {
-						send_packet->sequence_number--;
-					}
-					if(counter == 1001) {
-						send_packet->ack_number = recv_packet->sequence_number;
-					}
+					// if(counter >= 500 && counter <=1000) {
+					// 	send_packet->sequence_number--;
+					// }
+					// if(counter == 1001) {
+					// 	send_packet->ack_number = recv_packet->sequence_number;
+					// }
 				if(checkPacket(send_packet, recv_packet) == 0) {
 					write_rv = write(audio_fd, recv_packet->data, recv_packet->size);
 					if(write_rv < 0) {
