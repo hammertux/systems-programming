@@ -213,6 +213,107 @@ int stream_data(int client_fd)
 	return 0;
 }
 
+int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t from_len) {
+
+	struct timeval timeout;
+	timeout.tv_sec = 3;
+	timeout.tv_usec = 500000;
+	int read_rv;
+
+	FD_ZERO(read_set);
+	int starting = 1;
+	Packet* send_packet = buildPacket(NULL, 0, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
+	SyncPacket* start_connection = NULL;
+	send_packet->fin_bit = 0;
+	recv_packet->fin_bit = 0;
+	char* filename;
+	AudioInfo* info = initInfo(0, 0, 0);
+
+	uint16_t read_fd;
+	FD_SET(sockfd, read_set);
+	int sync_rv = syncWithClient(sockfd, read_set, &timeout);
+
+	do {
+		
+		if(FD_ISSET(sockfd, read_set) && sync_rv == 0){
+			breakloop = 0;
+			if(starting) {
+				start_connection = recvInitPacket(sockfd, client, from_len);
+				
+				
+				read_fd = aud_readinit(start_connection->file, &info->sample_rate, &info->sample_size, &info->channels);
+				if(read_fd < 0) {
+					return -1;
+				}
+				sendInfo(sockfd, client, info, from_len);
+				starting = 0;
+			}
+			else {
+				int check = checkPacket(send_packet, recv_packet);
+				if(check == 1) {
+					printf("OOps");
+					sendMessage(sockfd, send_packet, client, from_len);
+					receiveMessage(sockfd, recv_packet, client, from_len);
+				}
+				else {
+					read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
+					printf("READ: %d\n", read_rv);
+					if(read_rv < 0) {
+						fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
+						return -1;
+					}
+					if(read_rv < MAX_BUFFER || read_rv == 0) {
+						send_packet->fin_bit = 1;
+						send_packet->size = read_rv;
+						send_packet->ack_number++;
+						send_packet->sequence_number++;
+						sendMessage(sockfd, send_packet, client, from_len);
+						printf("LESS THAN MAX_BUFFER--SENT FIN\n");
+						//printf("Successfully streamed the audio file to the client!");
+						close(read_fd);	
+						starting = 1;
+						//receiveMessage(sockfd, recv_packet, &client, from_len);
+						//printPacket(send_packet, "r");
+						return 0;
+						
+					}
+					else{
+						send_packet->size = read_rv;
+						send_packet->ack_number++;
+						send_packet->sequence_number++;
+						sendMessage(sockfd, send_packet, client, from_len);
+						
+						
+					}
+					
+				}
+			
+				receiveMessage(sockfd, recv_packet, client, from_len);
+					if(recv_packet->fin_bit == 1) {//mention two army problem in report
+							printf("Successfully streamed the audio file to the client!");
+							starting = 1;
+							breakloop = 1;
+							//free(send_packet);
+							//free(recv_packet);
+							close(read_fd);
+							return 0;
+						}
+				
+			}
+			
+			
+			
+			
+
+		}
+		else if(sync_rv == 1) {
+			
+			breakloop = 1;
+		}
+		
+	}while(!breakloop);
+}
+
 /// the main loop, continuously waiting for clients
 int main (int argc, char **argv)
 {
@@ -227,9 +328,7 @@ int main (int argc, char **argv)
 	int sockfd;
 	int starting = 1, active = 1;
 	fd_set read_set;
-	struct timeval timeout;
-	timeout.tv_sec = 3;
-	timeout.tv_usec = 500000;
+	
 	char buffer[sizeof(Packet)];
 
 	struct sockaddr_in client, server;
@@ -243,98 +342,28 @@ int main (int argc, char **argv)
 
 	while(active) {
 		// breakloop = 0;
-		FD_ZERO(&read_set);
-		starting = 1;
-		Packet* send_packet = buildPacket(NULL, 0, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
-		SyncPacket* start_connection = NULL;
-		send_packet->fin_bit = 0;
-		recv_packet->fin_bit = 0;
-		char* filename;
-		AudioInfo* info = initInfo(0, 0, 0);
+
+		FD_SET(sockfd, &read_set);
+		int stream_rv;
 		
 
 		signal(SIGINT, sigint_handler );	// trap Ctrl^C signals
-		uint16_t read_fd;
-		FD_SET(sockfd, &read_set);
-		int sync_rv = syncWithClient(sockfd, &read_set, &timeout);
+		if(select(sockfd+1, &read_set, NULL, NULL, NULL) > 0) {
+		stream_rv = stream(sockfd, &read_set, &client, from_len);
+		}
+
+		if(stream_rv == 0) {
+			printf("Streaming Successful!!!\n");
+			select(sockfd+1, &read_set, NULL, NULL, NULL);
+		}
+		else {
+			printf("Something went wrong!\n");
+			select(sockfd+1, &read_set, NULL, NULL, NULL);
+		}
 
 		
-		do {
-			
-			if(FD_ISSET(sockfd, &read_set) && sync_rv == 0){
-				breakloop = 0;
-				if(starting) {
-					start_connection = recvInitPacket(sockfd, &client, from_len);
-					
-					
-					read_fd = aud_readinit(start_connection->file, &info->sample_rate, &info->sample_size, &info->channels);
-					if(read_fd < 0) {
-						break;
-					}
-					//info->sample_rate *= 0.5;
-					//info->sample_size *= 2;
-					//info->channels*=2;
-					sendInfo(sockfd, &client, info, from_len);
-					starting = 0;
-					//sleep(5);
-				}
-				else {
-					int check = checkPacket(send_packet, recv_packet);
-					if(check == 1) {
-						printf("OOps");
-						sendMessage(sockfd, send_packet, &client, from_len);
-						receiveMessage(sockfd, recv_packet, &client, from_len);
-					}
-					else {
-						read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
-						if(read_rv < MAX_BUFFER) {
-							send_packet->fin_bit = 1;
-							send_packet->size = read_rv;
-							send_packet->ack_number++;
-							send_packet->sequence_number++;
-							sendMessage(sockfd, send_packet, &client, from_len);	
-							//receiveMessage(sockfd, recv_packet, &client, from_len);
-							//printPacket(recv_packet, "r");
-							
-						}
-						else{
-							send_packet->size = read_rv;
-							send_packet->ack_number++;
-							send_packet->sequence_number++;
-							sendMessage(sockfd, send_packet, &client, from_len);
-							printf("READ: %d\n", read_rv);
-							if(read_rv < 0) {
-								fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
-								break;
-							}
-							
-						}
-						receiveMessage(sockfd, recv_packet, &client, from_len);
-						if(recv_packet->fin_bit == 1) {//mention two army problem in report
-								printf("Successfully streamed the audio file to the client!");
-								starting = 1;
-								//free(send_packet);
-								//free(recv_packet);
-								close(read_fd);
-								break;
-							}
-					}
-				
-					
-					
-				}
-				
-				
-				
-				
-
-			}
-			else if(sync_rv == 1) {
-				fprintf(stderr, "Client not responding. Ready for new requests.");
-				breakloop = 1;
-			}
-			
-		}while(!breakloop);
+		
+		//fprintf(stderr, "Client not responding. Ready for new requests.");
 	}
 	
 

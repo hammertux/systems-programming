@@ -128,6 +128,17 @@ AudioInfo* recvAudioInfo(int sockfd, struct addrinfo* server) {
 	return info;
 }
 
+void endConnection(int sockfd, Packet* send, Packet* recv, struct addrinfo* server) {
+	send->fin_bit = 1;
+	sendMessage(sockfd, send, server);
+	printPacket(send, "s");
+	printf("SENT FIN\n");
+	//receiveMessage(sockfd, server, recv);
+	printPacket(recv, "r");
+	printf("Server finished streaming requested file!");
+	
+}
+
 int main (int argc, char *argv [])
 {
 	int server_fd, audio_fd;
@@ -202,19 +213,14 @@ int main (int argc, char *argv [])
 			else {
 				receiveMessage(server_fd, server, recv_packet);
 				if(recv_packet->fin_bit == 1) {
-					send_packet->fin_bit = 1;
-					sendMessage(server_fd, send_packet, server);
-					printPacket(send_packet, "s");
-			
-					receiveMessage(server_fd, server, recv_packet);
-					printPacket(recv_packet, "r");
-					printf("Server finished streaming requested file!");
+					endConnection(server_fd, send_packet, recv_packet, server);
+					
 					freeaddrinfo(server);
 					free(send_packet);
 					free(recv_packet);
 					free(start_connection);
 					free(audioinfo);
-					return 0;
+					return 1;
 				}
 
 				
@@ -252,6 +258,8 @@ int main (int argc, char *argv [])
 		}
 
 	}while(!breakloop);
+	send_packet->fin_bit = 1;
+	sendMessage(server_fd, send_packet, server);
 
 	printf ("SysProg2006 network client\n");
 	printf ("handed in by VOORBEELDSTUDENT\n");
