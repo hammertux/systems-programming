@@ -78,8 +78,7 @@ void sendMessage(int sockfd, Packet* packet, struct addrinfo* server) {
 }
 
 int checkPacket(Packet* sent, Packet* recv) {
-	if(recv->sequence_number == (sent->sequence_number + 1) &&
-	   recv->ack_number == sent->sequence_number) {
+	if(recv->sequence_number == sent->ack_number) {
 		   return 0;
 	   }
 	   else {
@@ -203,21 +202,35 @@ int main (int argc, char *argv [])
 			else {
 				receiveMessage(server_fd, server, recv_packet);
 				if(recv_packet->fin_bit == 1) {
-					printf("Server finished streaming requested file!");
 					send_packet->fin_bit = 1;
 					sendMessage(server_fd, send_packet, server);
-					exit(0);
+					printf("Server finished streaming requested file!");
+					return 0;
 				}
+
+				
+
+					
+				}
+
+				sendMessage(server_fd, send_packet, server);
+					
+					send_packet->sequence_number++;
+					send_packet->ack_number = recv_packet->sequence_number;
+
+					if(counter >= 500 && counter <=1000) {
+						send_packet->sequence_number--;
+					}
+					if(counter == 1001) {
+						send_packet->ack_number = recv_packet->sequence_number;
+					}
+				if(checkPacket(send_packet, recv_packet) == 0) {
 					write_rv = write(audio_fd, recv_packet->data, recv_packet->size);
 					if(write_rv < 0) {
 						fprintf(stderr, "Could not write to audio fd: %s", strerror(errno));
 						return 1;
 					}
-
-					sendMessage(server_fd, send_packet, server);
 					
-					send_packet->sequence_number++;
-					send_packet->ack_number = recv_packet->sequence_number;
 					
 				
 			}
@@ -262,6 +275,10 @@ int main (int argc, char *argv [])
 	}
 
 	freeaddrinfo(server);
+	free(send_packet);
+	free(recv_packet);
+	free(start_connection);
+	free(audioinfo);
 
     int close_rv = close(server_fd);
     if(close_rv < 0) {

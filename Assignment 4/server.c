@@ -31,83 +31,7 @@
 
 static int breakloop = 0;	///< use this variable to stop your wait-loop. Occasionally check its value, !1 signals that the program should close
 
-/// stream data to a client. 
-///
-/// This is an example function; you do *not* have to use this and can choose a different flow of control
-///
-/// @param fd an opened file descriptor for reading and writing
-/// @return returns 0 on success or a negative errorcode on failure
-int stream_data(int client_fd)
-{
-	int data_fd;
-	int channels, sample_size, sample_rate;
-	server_filterfunc pfunc;
-	char *datafile, *libfile;
-	char buffer[BUFSIZE];
-	AudioInfo* info;
-	
-	// TO IMPLEMENT
-	// receive a control packet from the client 
-	// containing at the least the name of the file to stream and the library to use
-	{
-		datafile = strdup("example.wav");
-		libfile = NULL;
-	}
-	
-	// open input
-	data_fd = aud_readinit(datafile, &info->sample_rate, &info->sample_size, &info->channels);
-	if (data_fd < 0){
-		printf("failed to open datafile %s, skipping request\n",datafile);
-		return -1;
-	}
-	printf("opened datafile %s\n",datafile);
 
-	// optionally open a library
-	if (libfile){
-		// try to open the library, if one is requested
-		pfunc = NULL;
-		if (!pfunc){
-			printf("failed to open the requested library. breaking hard\n");
-			return -1;
-		}
-		printf("opened libraryfile %s\n",libfile);
-	}
-	else{
-		pfunc = NULL;
-		printf("not using a filter\n");
-	}
-	
-	// TO IMPLEMENT : optionally return an error code to the client if initialization went wrong
-	
-	// start streaming
-	{
-		int bytesread, bytesmod;
-		
-		bytesread = read(data_fd, buffer, BUFSIZE);
-		while (bytesread > 0){
-			// you might also want to check that the client is still active, whether it wants resends, etc..
-			
-			// edit data in-place. Not necessarily the best option
-			if (pfunc)
-				bytesmod = pfunc(buffer,bytesread); 
-			write(client_fd, buffer, bytesmod);
-			bytesread = read(data_fd, buffer, BUFSIZE);
-		}
-	}
-
-	// TO IMPLEMENT : optionally close the connection gracefully 	
-	
-	if (client_fd >= 0)
-		close(client_fd);
-	if (data_fd >= 0)
-		close(data_fd);
-	if (datafile)
-		free(datafile);
-	if (libfile)
-		free(libfile);
-	
-	return 0;
-}
 
 /// unimportant: the signal handler. This function gets called when Ctrl^C is pressed
 void sigint_handler(int sigint)
@@ -129,7 +53,7 @@ int syncWithClient(int sockfd, fd_set* sync, struct timeval* timeout) {
         return 1;
     }
     else if(select_rv == 0) {
-        fprintf(stderr, "ERROR: A timeout has occured. %s\n", strerror(errno));
+        //fprintf(stderr, "ERROR: A timeout has occured. %s\n", strerror(errno));
         return 1;
     }
     else {
@@ -211,6 +135,84 @@ int checkPacket(Packet* sent, Packet* recv) {
 	   }
 }
 
+/// stream data to a client. 
+///
+/// This is an example function; you do *not* have to use this and can choose a different flow of control
+///
+/// @param fd an opened file descriptor for reading and writing
+/// @return returns 0 on success or a negative errorcode on failure
+int stream_data(int client_fd)
+{
+	int data_fd;
+	int channels, sample_size, sample_rate;
+	server_filterfunc pfunc;
+	char *datafile, *libfile;
+	char buffer[BUFSIZE];
+	AudioInfo* info;
+	
+	// TO IMPLEMENT
+	// receive a control packet from the client 
+	// containing at the least the name of the file to stream and the library to use
+	{
+		datafile = strdup("example.wav");
+		libfile = NULL;
+	}
+	
+	// open input
+	data_fd = aud_readinit(datafile, &info->sample_rate, &info->sample_size, &info->channels);
+	if (data_fd < 0){
+		printf("failed to open datafile %s, skipping request\n",datafile);
+		return -1;
+	}
+	printf("opened datafile %s\n",datafile);
+
+	// optionally open a library
+	if (libfile){
+		// try to open the library, if one is requested
+		pfunc = NULL;
+		if (!pfunc){
+			printf("failed to open the requested library. breaking hard\n");
+			return -1;
+		}
+		printf("opened libraryfile %s\n",libfile);
+	}
+	else{
+		pfunc = NULL;
+		printf("not using a filter\n");
+	}
+	
+	// TO IMPLEMENT : optionally return an error code to the client if initialization went wrong
+	
+	// start streaming
+	{
+		int bytesread, bytesmod;
+		
+		bytesread = read(data_fd, buffer, BUFSIZE);
+		while (bytesread > 0){
+			// you might also want to check that the client is still active, whether it wants resends, etc..
+			
+			// edit data in-place. Not necessarily the best option
+			if (pfunc)
+				bytesmod = pfunc(buffer,bytesread); 
+			write(client_fd, buffer, bytesmod);
+			bytesread = read(data_fd, buffer, BUFSIZE);
+		}
+	}
+
+	// TO IMPLEMENT : optionally close the connection gracefully 	
+	
+	if (client_fd >= 0)
+		close(client_fd);
+	if (data_fd >= 0)
+		close(data_fd);
+	if (datafile)
+		free(datafile);
+	if (libfile)
+		free(libfile);
+	
+	return 0;
+}
+
 /// the main loop, continuously waiting for clients
 int main (int argc, char **argv)
 {
@@ -232,10 +234,7 @@ int main (int argc, char **argv)
 
 	struct sockaddr_in client, server;
 	socklen_t from_len = sizeof(client);
-	Packet* send_packet = buildPacket(NULL, 0, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
-	SyncPacket* start_connection = NULL;
-	char* filename;
-	AudioInfo* info = initInfo(0, 0, 0);
+	
 
 	memset(&server, 0, sizeof(server));
 	memset(&client, 0, sizeof(client));
@@ -244,20 +243,32 @@ int main (int argc, char **argv)
 
 	while(active) {
 		starting = 1;
-
-		FD_SET(sockfd, &read_set);
-		int sync_rv = syncWithClient(sockfd, &read_set, &timeout);
+		Packet* send_packet = buildPacket(NULL, 0, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
+	SyncPacket* start_connection = NULL;
+	char* filename;
+	AudioInfo* info = initInfo(0, 0, 0);
+		
 
 		signal(SIGINT, sigint_handler );	// trap Ctrl^C signals
 		uint16_t read_fd;
-	
+		FD_SET(sockfd, &read_set);
+		int sync_rv = syncWithClient(sockfd, &read_set, &timeout);
 
 		
 		do {
+			
 			if(FD_ISSET(sockfd, &read_set) && sync_rv == 0){
 				if(starting) {
 					start_connection = recvInitPacket(sockfd, &client, from_len);
+					
+					
 					read_fd = aud_readinit(start_connection->file, &info->sample_rate, &info->sample_size, &info->channels);
+					if(read_fd < 0) {
+						break;
+					}
+					//info->sample_rate *= 0.5;
+					//info->sample_size *= 2;
+					//info->channels*=2;
 					sendInfo(sockfd, &client, info, from_len);
 					starting = 0;
 					sleep(5);
@@ -265,41 +276,53 @@ int main (int argc, char **argv)
 				else {
 					int check = checkPacket(send_packet, recv_packet);
 					if(check == 1) {
-						//printf("OOps");
-						//sendMessage(sockfd, send_packet, &client, from_len);
+						printf("OOps");
+						sendMessage(sockfd, send_packet, &client, from_len);
+						receiveMessage(sockfd, recv_packet, &client, from_len);
+					}
+					else {
+						read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
+						if(read_rv == 0) {
+							
+							send_packet->fin_bit = 1;
+							sendMessage(sockfd, send_packet, &client, from_len);
+							//break;
+							receiveMessage(sockfd, recv_packet, &client, from_len);
+							printPacket(recv_packet, "r");
+							if(recv_packet->fin_bit == 1) {//mention two army problem in report
+								printf("Successfully streamed the audio file to the client!");
+								select(sockfd+1, &read_set, NULL, NULL, NULL);
+								break;
+							}
+						}
+						// int i = 0;
+						// 	for(i = 0; i < MAX_BUFFER; i++) {
+						// 		send_packet->data[i] *= 5;
+						// 	}
+						send_packet->size = read_rv;
+						send_packet->ack_number++;
+						send_packet->sequence_number++;
+						sendMessage(sockfd, send_packet, &client, from_len);
+						printf("READ: %d\n", read_rv);
+						if(read_rv < 0) {
+							fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
+							break;
+						}
+						receiveMessage(sockfd, recv_packet, &client, from_len);
 					}
 				
-						read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
-				if(read_rv == 0) {
-					printf("Successfully streamed the audio file to the client!");
-					send_packet->fin_bit = 1;
-					sendMessage(sockfd, send_packet, &client, from_len);
-					break;
-					receiveMessage(sockfd, recv_packet, &client, from_len);
-					if(recv_packet->fin_bit == 1) {//mention two army problem in report
-						break;
-					}
-					
-				}
-				send_packet->size = read_rv;
-				send_packet->ack_number++;
-				send_packet->sequence_number++;
-				sendMessage(sockfd, send_packet, &client, from_len);
-				printf("READ: %d\n", read_rv);
-				if(read_rv < 0) {
-					fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
-					return 1;
-				}
-				else {
-					receiveMessage(sockfd, recv_packet, &client, from_len);
 					
 					
 				}
-					}
+				
 				
 				
 				
 
+			}
+			else if(sync_rv == 1) {
+				//fprintf(stderr, "Client not responding. Ready for new requests.");
+				break;
 			}
 			
 		}while(!breakloop);
