@@ -156,7 +156,9 @@ int main (int argc, char *argv [])
 
 	FD_ZERO(&read_set);
 
-	struct timeval timeout = {3, 0};
+	struct timeval timeout;
+	timeout.tv_sec = 1;
+	timeout.tv_usec = 0;
 
 	int counter = 0;
 
@@ -224,7 +226,7 @@ int main (int argc, char *argv [])
 				}
 					
 				}
-
+		
 				sendMessage(server_fd, send_packet, server);
 					
 					send_packet->sequence_number++;
@@ -249,10 +251,10 @@ int main (int argc, char *argv [])
 
 			counter++;
 		}
-		else {
-			breakloop = 1;
-			exit(0);
-		}
+		// else {
+		// 	breakloop = 1;
+		// 	exit(0);
+		// }
 
 	}while(!breakloop);
 	send_packet->fin_bit = 1;
@@ -274,19 +276,19 @@ int main (int argc, char *argv [])
 	
 	
 	// start receiving data
-	{
-		int bytesread, bytesmod;
-		char *modbuffer;
+	// {
+	// 	int bytesread, bytesmod;
+	// 	char *modbuffer;
 		
-		bytesread = read(server_fd, buffer, BUFSIZE);
-		while (bytesread > 0){
-			// edit data in-place. Not necessarily the best option
-			if (pfunc)
-				modbuffer = pfunc(buffer,bytesread,&bytesmod); 
-			write(audio_fd, modbuffer, bytesmod);
-			bytesread = read(server_fd, buffer, BUFSIZE);
-		}
-	}
+	// 	bytesread = read(server_fd, buffer, BUFSIZE);
+	// 	while (bytesread > 0){
+	// 		// edit data in-place. Not necessarily the best option
+	// 		if (pfunc)
+	// 			modbuffer = pfunc(buffer,bytesread,&bytesmod); 
+	// 		write(audio_fd, modbuffer, bytesmod);
+	// 		bytesread = read(server_fd, buffer, BUFSIZE);
+	// 	}
+	// }
 
 	freeaddrinfo(server);
 	free(send_packet);

@@ -30,7 +30,7 @@
 #define SERVER_PORT 1234
 
 static int breakloop = 0;	///< use this variable to stop your wait-loop. Occasionally check its value, !1 signals that the program should close
-
+static int end = 0;
 
 
 /// unimportant: the signal handler. This function gets called when Ctrl^C is pressed
@@ -198,12 +198,14 @@ int stream_data(int client_fd)
 int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t from_len, SyncPacket* start_connection) {
 
 	struct timeval timeout;
-	timeout.tv_sec = 3;
+	timeout.tv_sec = 5;
 	timeout.tv_usec = 500000;
 	int read_rv;
+	int starting = 1;
+	
 
 	FD_ZERO(read_set);
-	int starting = 1;
+	//int starting = 1;
 	Packet* send_packet = buildPacket(NULL, 0, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
 	
 	send_packet->fin_bit = 0;
@@ -215,7 +217,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	FD_SET(sockfd, read_set);
 	int sync_rv = syncWithClient(sockfd, read_set, &timeout);
 
-	
+	if(end == 0) {
 	start_connection = recvInitPacket(sockfd, client, from_len);
 	
 	
@@ -228,34 +230,44 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
 			printf("READ: %d\n", read_rv);
 			if(read_rv < 0) {
+				printPacket(recv_packet, "s");
 				fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
+				exit(1);
 				return -1;
 			}
+	}
 
-	while(read_rv > 0) {
+	while(read_rv > 0 && end == 0) {
 		
 		int check = checkPacket(send_packet, recv_packet);
 		if(check == 1) {
 			printf("OOps");
+			printPacket(send_packet, "s");
+			printPacket(recv_packet, "r");
+			
 			sendMessage(sockfd, send_packet, client, from_len);
+			//return -1;
 			//receiveMessage(sockfd, recv_packet, client, from_len);
 		}
 		else {
-
+			if(starting == 0 && end == 0) {
 			read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
 			printf("READ: %d\n", read_rv);
 			if(read_rv < 0) {
 				fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
+				//sleep(5);
 				return -1;
 			}
+			}
 			
-			if(read_rv < MAX_BUFFER || read_rv == 0) {
+			if(read_rv < MAX_BUFFER) {
 				send_packet->fin_bit = 1;
 				send_packet->size = read_rv;
 				send_packet->ack_number++;
 				send_packet->sequence_number++;
 				sendMessage(sockfd, send_packet, client, from_len);
 				printf("Successfully streamed the audio file to the client!");
+				end = 1;
 				//close(read_fd);
 				//free(send_packet);
 				//free(recv_packet);
@@ -264,14 +276,18 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			}
 			else{
 				send_packet->size = read_rv;
+				
+				sendMessage(sockfd, send_packet, client, from_len);
 				send_packet->ack_number++;
 				send_packet->sequence_number++;
-				sendMessage(sockfd, send_packet, client, from_len);
+				starting = 0;
 			}
 			
 		}
-		
-		FD_SET(sockfd, read_set);
+		 FD_ZERO(read_set);
+		 FD_SET(sockfd, read_set);
+		timeout.tv_sec = 5;
+		timeout.tv_usec = 500000;
 		int sync_rv = syncWithClient(sockfd, read_set, &timeout);
 		if(FD_ISSET(sockfd, read_set) && sync_rv == 0){
 			receiveMessage(sockfd, recv_packet, client, from_len);
@@ -281,6 +297,8 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 				//free(send_packet);
 				//free(recv_packet);
 				//close(read_fd);
+				end = 1;
+				break;
 			}
 				
 		
@@ -320,7 +338,7 @@ int main (int argc, char **argv)
 
 	while(!breakloop) {
 		// breakloop = 0;
-		
+		signal(SIGINT, sigint_handler );
 		fd_set read_set;
 		FD_ZERO(&read_set);
 		FD_SET(sockfd, &read_set);
@@ -332,17 +350,22 @@ int main (int argc, char **argv)
 			printf("Something went wrong!\n");
 		}
 
-		signal(SIGINT, sigint_handler );	// trap Ctrl^C signals
+			// trap Ctrl^C signals
 		if(select_rv > 0) {
 			stream_rv = stream(sockfd, &read_set, &client, from_len, start_connection);
 		}
 
 		if(stream_rv < 0) {
 			printf("Something went wrong!\n");
+			end = 0;
+			//free(start_connection);
+			//select(sockfd+1, &read_set, NULL, NULL, NULL);
+			//exit(0);
 		}
 		else {
 			printf("Streaming Successful!!!\n");
-			free(start_connection);
+			end = 0;
+			//free(start_connection);
 			select(sockfd+1, &read_set, NULL, NULL, NULL);
 		}
 		
@@ -364,4 +387,3 @@ int main (int argc, char **argv)
 
 	return 0;
 }
-
