@@ -48,7 +48,7 @@ void freeAudioInfo(AudioInfo* info);
 
 void serializeInfo(AudioInfo* info, char* buf);
 
-AudioInfo* extractInfo(char buffer[sizeof(AudioInfo)]);
+void extractInfo(AudioInfo* info, char buffer[sizeof(AudioInfo)]);
 
 
 #endif /* _PACKET_H_ */

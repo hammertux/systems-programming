@@ -119,7 +119,10 @@ void sendInitPacket(int sockfd, struct addrinfo* server, SyncPacket* sync) {
 
 AudioInfo* recvAudioInfo(int sockfd, struct addrinfo* server) {
 	AudioInfo* info = malloc(sizeof(AudioInfo));
-	int recvfrom_rv = recvfrom(sockfd, info, sizeof(AudioInfo), 0, server->ai_addr, &server->ai_addrlen);
+	char buffer[sizeof(AudioInfo)];
+	
+	int recvfrom_rv = recvfrom(sockfd, buffer, sizeof(AudioInfo), 0, server->ai_addr, &server->ai_addrlen);
+	extractInfo(info, buffer);
     if(recvfrom_rv < 0) {
         fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
         exit(1);

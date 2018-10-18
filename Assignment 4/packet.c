@@ -123,8 +123,8 @@ void serializeInfo(AudioInfo* info, char* buf){
 
 }
 
-AudioInfo* extractInfo(char buffer[sizeof(AudioInfo)]) {
-    AudioInfo* info = malloc(sizeof(AudioInfo));
+void extractInfo(AudioInfo* info, char buffer[sizeof(AudioInfo)]) {
+    //AudioInfo* info = malloc(sizeof(AudioInfo));
 
     int32_t four_byte_data;
     int byte_offset = 0;

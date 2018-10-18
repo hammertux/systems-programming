@@ -125,7 +125,9 @@ SyncPacket* recvInitPacket(int sockfd, struct sockaddr_in* client, socklen_t fro
 }
 
 void sendInfo(int sockfd, struct sockaddr_in* client, AudioInfo* info, socklen_t from_len) {
-	int send_rv = sendto(sockfd, info, sizeof(AudioInfo), 0, (struct sockaddr* )client, from_len);
+	char buffer[sizeof(AudioInfo)];
+	serializeInfo(info, buffer);
+	int send_rv = sendto(sockfd, buffer, sizeof(AudioInfo), 0, (struct sockaddr* )client, from_len);
 	if(send_rv < 0) {
 		fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
 		exit(1);
@@ -232,7 +234,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			if(read_rv < 0) {
 				printPacket(recv_packet, "s");
 				fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
-				exit(1);
+				//exit(1);
 				return -1;
 			}
 	}
@@ -365,7 +367,7 @@ int main (int argc, char **argv)
 		else {
 			printf("Streaming Successful!!!\n");
 			end = 0;
-			//free(start_connection);
+			free(start_connection);
 			select(sockfd+1, &read_set, NULL, NULL, NULL);
 		}
 		
