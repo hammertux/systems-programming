@@ -1,7 +1,7 @@
 ###################### DEFS
 
 CC = gcc
-CFLAGS = -Wall -pedantic
+CFLAGS = -Wall -pedantic -Werror
 LDFLAGS = -ldl
 DEPS = $(wildcard *.h)
 
@@ -22,10 +22,10 @@ LIBS = libblank.so
 
 all : client server ${LIBS}
 
-client : client.o audio.o packet.o
+client : client.o audio.o packet.o reverselib.o
 	${CC} ${CFLAGS} -o $@ $+
 
-server : server.o audio.o packet.o
+server : server.o audio.o packet.o reverselib.o
 	${CC} ${CFLAGS} -o $@ $+
 
 distclean : clean

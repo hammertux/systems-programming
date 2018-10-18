@@ -69,7 +69,7 @@ void sendMessage(int sockfd, Packet* packet, struct addrinfo* server) {
 	char buffer[sizeof(Packet)];
 	serializePacket(packet, buffer);
 	int sendto_rv = sendto(sockfd, &buffer, sizeof(Packet), 0, server->ai_addr, server->ai_addrlen);
-	printf("SENT: %d\n", sendto_rv);
+	//printf("SENT: %d\n", sendto_rv);
 
 	if(sendto_rv < 0) {
         fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
@@ -109,7 +109,7 @@ int setAudioData(AudioInfo* info) {
 void sendInitPacket(int sockfd, struct addrinfo* server, SyncPacket* sync) {
 
 	int sendto_rv = sendto(sockfd, sync, sizeof(SyncPacket), 0, server->ai_addr, server->ai_addrlen);
-	printf("SENT: %d\n", sendto_rv);
+	//printf("SENT: %d\n", sendto_rv);
 
 	if(sendto_rv < 0) {
         fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
@@ -134,50 +134,27 @@ AudioInfo* recvAudioInfo(int sockfd, struct addrinfo* server) {
 void endConnection(int sockfd, Packet* send, Packet* recv, struct addrinfo* server) {
 	send->fin_bit = 1;
 	sendMessage(sockfd, send, server);
-	printPacket(send, "s");
-	printf("SENT FIN\n");
-	//receiveMessage(sockfd, server, recv);
-	printPacket(recv, "r");
-	printf("Server finished streaming requested file!");
+	// printPacket(send, 's');
+	// printf("SENT FIN\n");
+	// printPacket(recv, 'r');
+	printf("Server finished streaming requested file!\n");
 	
 }
 
 int main (int argc, char *argv [])
 {
-	int server_fd, audio_fd;
-	int write_rv;
-	int starting = 1;
+	printf ("SysProg2006 network client\n");
+	printf ("handed in by Andrea Di Dio\n");
+	
+	signal( SIGINT, sigint_handler );// trap Ctrl^C signals
+	
+	// parse arguments
+	if (argc < 3){
+		printf ("error : called with incorrect number of parameters\nusage : %s <server_name/IP> <filename> [<filter> [filter_options]]]\n", argv[0]) ;
+		return -1;
+	}
+
 	client_filterfunc pfunc;
-	char buffer[sizeof(Packet)];
-	struct addrinfo hints, *server;
-	fd_set read_set;
-	AudioInfo* audioinfo = NULL;
-	Packet* send_packet = buildPacket(NULL, 1, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
-	SyncPacket* start_connection = initSync(argv[2], "");
-	int connection_lost = 0;
-
-
-	FD_ZERO(&read_set);
-
-	struct timeval timeout;
-	timeout.tv_sec = 1;
-	timeout.tv_usec = 0;
-
-	int counter = 0;
-
-
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_DGRAM;
-
-	const char* hostname = argv[1];
-
-	int getaddrinfo_rv = getaddrinfo(hostname, "1234", &hints, &server);
-	if(getaddrinfo_rv != 0) {
-		fprintf(stderr, "Error: Hostname unresolved %s\n", gai_strerror(getaddrinfo_rv));
-		return 1;
-    }
-
 	// open the library on the clientside if one is requested
 	if (argv[3] && strcmp(argv[3],"")){
 		// try to open the library, if one is requested
@@ -193,27 +170,54 @@ int main (int argc, char *argv [])
 		printf("not using a filter\n");
 	}
 
+	int server_fd, audio_fd;
+	int write_rv;
+	int starting = 1;
+	
+	struct addrinfo hints, *server;
+	fd_set read_set;
+	AudioInfo* audioinfo = NULL;
+	Packet* send_packet = buildPacket(NULL, 1, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
+	SyncPacket* start_connection = initSync(argv[2], "", 'i', 0);
+
+
+	FD_ZERO(&read_set);
+	struct timeval timeout;
+	timeout.tv_sec = 2;
+	timeout.tv_usec = 500000;
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_DGRAM;
+
+	const char* hostname = argv[1];
+
+	int getaddrinfo_rv = getaddrinfo(hostname, STR_SERVER_PORT, &hints, &server);
+	if(getaddrinfo_rv != 0) {
+		fprintf(stderr, "Error: Hostname unresolved %s\n", gai_strerror(getaddrinfo_rv));
+		return 1;
+    }
+
 	server_fd = setupSocket(server);
 
 	do {
 		if(starting) {
 			sendInitPacket(server_fd, server, start_connection);
-			printf("----INIT----\nfilename: %s\nlibrary: %s\n", start_connection->file, start_connection->library);
+			//printf("----INIT----\nfilename: %s\nlibrary: %s\n", start_connection->file, start_connection->library);
 		}
 
 		FD_SET(server_fd, &read_set);
 		int sync_rv = syncWithServer(server_fd, &read_set, &timeout);
 		if(sync_rv == 1) {
-			printf("The packet was lost.\n");
-			exit(1);
+			printf("The connection with the server was lost...\n");
+			return -1;
 		}
 		else if(FD_ISSET(server_fd, &read_set) && sync_rv == 0){
 			if(starting == 1) {
 				audioinfo = recvAudioInfo(server_fd, server);
 				audio_fd = setAudioData(audioinfo);
-				printf("AUDIO_FD = %d", audio_fd);
+				//printf("AUDIO_FD = %d", audio_fd);
 				starting = 0;
-				//sleep(5);
 			}
 			else {
 				receiveMessage(server_fd, server, recv_packet);
@@ -228,51 +232,28 @@ int main (int argc, char *argv [])
 					return 1;
 				}
 					
-				}
+			}
 		
+			sendMessage(server_fd, send_packet, server);
+				
+			send_packet->sequence_number++;
+			send_packet->ack_number = recv_packet->sequence_number;
+
+			if(checkPacket(send_packet, recv_packet) == 0) {
+				write_rv = write(audio_fd, recv_packet->data, recv_packet->size);
+				if(write_rv < 0) {
+					fprintf(stderr, "Could not write to audio fd: %s", strerror(errno));
+					return 1;
+				}
+			}
+			else {
 				sendMessage(server_fd, send_packet, server);
-					
-					send_packet->sequence_number++;
-					send_packet->ack_number = recv_packet->sequence_number;
-
-					// if(counter >= 500 && counter <=1000) {
-					// 	send_packet->sequence_number--;
-					// }
-					// if(counter == 1001) {
-					// 	send_packet->ack_number = recv_packet->sequence_number;
-					// }
-				if(checkPacket(send_packet, recv_packet) == 0) {
-					write_rv = write(audio_fd, recv_packet->data, recv_packet->size);
-					if(write_rv < 0) {
-						fprintf(stderr, "Could not write to audio fd: %s", strerror(errno));
-						return 1;
-					}
-				}
-				else {
-					sendMessage(server_fd, send_packet, server);
-				}
-
-			counter++;
+			}
 		}
-		// else {
-		// 	breakloop = 1;
-		// 	exit(0);
-		// }
 
 	}while(!breakloop);
-	send_packet->fin_bit = 1;
-	sendMessage(server_fd, send_packet, server);
 
-	printf ("SysProg2006 network client\n");
-	printf ("handed in by Andrea Di Dio\n");
-	
-	signal( SIGINT, sigint_handler );	// trap Ctrl^C signals
-	
-	// parse arguments
-	if (argc < 3){
-		printf ("error : called with incorrect number of parameters\nusage : %s <server_name/IP> <filename> [<filter> [filter_options]]]\n", argv[0]) ;
-		return -1;
-	}
+
 	
 	
 	

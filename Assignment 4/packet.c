@@ -10,10 +10,12 @@ Packet* buildPacket(char buffer[MAX_BUFFER], uint32_t seq_num, uint32_t ack, uin
     return packet;
 }
 
-SyncPacket* initSync(const char* filename, const char* lib) {
+SyncPacket* initSync(const char* filename, const char* lib, char op, uint8_t perc) {
     SyncPacket* sync = malloc(sizeof(SyncPacket));
     strncpy(sync->file, filename, strlen(filename));
     strncpy(sync->library, lib, strlen(lib));
+    sync->inc_or_dec = op;
+    sync->percentage = perc;
 
     return sync;
 }
@@ -34,7 +36,7 @@ void serializePacket(Packet* packet, char* buf) {
     memcpy((packet_buffer + byte_offset), &four_byte_data, sizeof(four_byte_data));
     byte_offset += sizeof(four_byte_data);
 
-    one_bit_data = htons(packet->fin_bit);
+    one_bit_data = packet->fin_bit;
     memcpy((packet_buffer + byte_offset), &one_bit_data, sizeof(one_bit_data));
     byte_offset += sizeof(one_bit_data);
 
@@ -42,16 +44,7 @@ void serializePacket(Packet* packet, char* buf) {
     memcpy((packet_buffer + byte_offset), &four_byte_data, sizeof(four_byte_data));
     byte_offset += sizeof(four_byte_data);
 
-    //TODO: IMPLEMENT COMMANDS TELNET STYLE THEN SERIALISE.
-
-    
-
     memcpy((&packet_buffer[byte_offset]), packet->data, MAX_BUFFER);
-    
-    if(memcmp(packet_buffer + byte_offset, packet->data, MAX_BUFFER) != 0) {
-        printf("NONOSERIALIZE\n\n");
-        exit(1);
-    }
 
     memcpy(buf, packet_buffer, sizeof(Packet));
 }
@@ -73,7 +66,7 @@ void extractPacket(Packet* packet, char buffer[sizeof(Packet)]) {
     byte_offset += sizeof(four_byte_data);
 
     memcpy(&one_bit_data, (buffer + byte_offset), sizeof(one_bit_data));
-    packet->fin_bit = ntohl(one_bit_data);
+    packet->fin_bit = one_bit_data;
     byte_offset += sizeof(one_bit_data);
 
     memcpy(&four_byte_data, (buffer + byte_offset), sizeof(four_byte_data));
@@ -81,15 +74,6 @@ void extractPacket(Packet* packet, char buffer[sizeof(Packet)]) {
     byte_offset += sizeof(four_byte_data);
 
     memcpy(packet->data, (buffer + byte_offset), MAX_BUFFER);
-
-    if(memcmp(buffer+byte_offset, packet->data, MAX_BUFFER) != 0) {
-        printf("NONOEXTRACT\n\n");
-        exit(1);
-    }
-
-    //printPacket(packet, "r");
-
-    //return packet;
 }
 
 AudioInfo* initInfo(int32_t size, int32_t rate, int32_t channels) {
@@ -140,19 +124,18 @@ void extractInfo(AudioInfo* info, char buffer[sizeof(AudioInfo)]) {
     memcpy(&four_byte_data, buffer + byte_offset, sizeof(four_byte_data));
     info->sample_size = ntohl(four_byte_data);
 
-    return info;
 }
 
 
 
-void printPacket(Packet* packet, const char* s_or_r) {
-    if(s_or_r == "s") {
+void printPacket(Packet* packet, char s_or_r) {
+    if(s_or_r == 's') {
         printf("-------------------SENDING--------------------\n");
         printf("Header:\nSize: %d\nSEQ: %d\nACK: %d\nFIN: %d\n\nPacket:\nData: %s\n", packet->size, packet->sequence_number,
             packet->ack_number, packet->fin_bit, packet->data);
         printf("-------------------END SENDING------------------\n");
     }
-    else if(s_or_r == "r") {
+    else if(s_or_r == 'r') {
         printf("-------------------RECEIVING--------------------\n");
         printf("Header:\nSize: %d\nSEQ: %d\nACK: %d\nFIN: %d\n\nPacket:\nData: %s\n", packet->size, packet->sequence_number,
             packet->ack_number, packet->fin_bit, packet->data);
