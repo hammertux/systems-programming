@@ -6,7 +6,7 @@
  * contact : arno@cs.vu.nl
  * */
 
-#include <stdlib.h>
+#include <stdlib.h> 
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -19,15 +19,11 @@
 #include <sys/time.h>
 #include <errno.h>
 
-#include "library.h"
 #include "audio.h"
 #include "packet.h"
 #include "util.h"
-#include "volumelib.h"
-#include "speedlib.h"
-#include "monolib.h"
 
-#define IP_PROTOCOL 0
+
 
 static int breakloop = 0;	///< use this variable to stop your wait-loop. Occasionally check its value, !1 signals that the program should close
 
@@ -37,10 +33,10 @@ void sigint_handler(int sigint)
 {
 	if (!breakloop){
 		breakloop=1;
-		printf("SIGINT catched. Please wait to let the server close gracefully.\nTo close hard press Ctrl^C again.\n");
+		printf("[+] SIGINT catched. Please wait to let the server close gracefully.\nTo close hard press Ctrl^C again.\n");
 	}
 	else{
-       	printf ("SIGINT occurred, exiting hard... please wait\n");
+       	printf ("[-] SIGINT occurred, exiting hard... please wait\n");
 		exit(-1);
 	}
 }
@@ -54,11 +50,9 @@ void gracefullyExit(int sockfd, int audio_fd) {
 int syncWithClient(int sockfd, fd_set* sync, struct timeval* timeout) {
     int select_rv = select(sockfd + 1, sync, NULL, NULL, timeout);
     if(select_rv < 0 && breakloop == 1) {
-        //fprintf(stderr, "ERROR: Could not sync fds. %s\n", strerror(errno));
         return 1;
     }
     else if(select_rv == 0) {
-        //fprintf(stderr, "ERROR: A timeout has occured. %s\n", strerror(errno));
         return 1;
     }
     else {
@@ -69,7 +63,7 @@ int syncWithClient(int sockfd, fd_set* sync, struct timeval* timeout) {
 int setupSocket(struct sockaddr_in* server) {
 	int sockfd = socket(AF_INET, SOCK_DGRAM, IP_PROTOCOL);
 	if(sockfd < 0) {
-        fprintf(stderr, "ERROR: Could not create socket. %s\n", strerror(errno));
+        fprintf(stderr, "[-] ERROR: Could not create socket. %s\n", strerror(errno));
         exit(1);
     }
 
@@ -81,11 +75,11 @@ int setupSocket(struct sockaddr_in* server) {
 	if(bind_rv < 0) {
         int close_rv = close(sockfd);
         if(close_rv < 0) {
-            fprintf(stderr, "ERROR: Could not close the socket. %s\n", strerror(errno));
+            fprintf(stderr, "[-] ERROR: Could not close the socket. %s\n", strerror(errno));
             exit(1);
         }
 
-        fprintf(stderr, "ERROR: Could not bind socket. %s\n", strerror(errno));
+        fprintf(stderr, "[-] ERROR: Could not bind socket. %s\n", strerror(errno));
         exit(1);
     }
 
@@ -97,7 +91,7 @@ void sendMessage(int sockfd, Packet* packet, struct sockaddr_in* client, socklen
 	serializePacket(packet, buffer);
 	int send_rv = sendto(sockfd, &buffer, sizeof(Packet), 0, (struct sockaddr* )client, from_len);
 	if(send_rv < 0) {
-		fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
+		fprintf(stderr, "[-] ERROR: Could not send data. %s\n", strerror(errno));
 		exit(1);
 	}
 }
@@ -107,7 +101,7 @@ void receiveMessage(int sockfd, Packet* packet, struct sockaddr_in* client, sock
 	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, (struct sockaddr* )client, &from_len);
 	extractPacket(packet, buffer);
     if(recvfrom_rv < 0) {
-        fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
+        fprintf(stderr, "[-] ERROR: Could not receive data. %s\n", strerror(errno));
         exit(1);
     }
 }
@@ -116,7 +110,7 @@ SyncPacket* recvInitPacket(int sockfd, struct sockaddr_in* client, socklen_t fro
 	SyncPacket* init = malloc(sizeof(SyncPacket));
 	int recvfrom_rv = recvfrom(sockfd, init, sizeof(SyncPacket), 0, (struct sockaddr* )client, &from_len);
     if(recvfrom_rv < 0) {
-        fprintf(stderr, "ERROR: Could not receive data. %s\n", strerror(errno));
+        fprintf(stderr, "[-] ERROR: Could not receive data. %s\n", strerror(errno));
         exit(1);
     }
 
@@ -128,7 +122,7 @@ void sendInfo(int sockfd, struct sockaddr_in* client, AudioInfo* info, socklen_t
 	serializeInfo(info, buffer);
 	int send_rv = sendto(sockfd, buffer, sizeof(AudioInfo), 0, (struct sockaddr* )client, from_len);
 	if(send_rv < 0) {
-		fprintf(stderr, "ERROR: Could not send data. %s\n", strerror(errno));
+		fprintf(stderr, "[-] ERROR: Could not send data. %s\n", strerror(errno));
 		exit(1);
 	}
 }
@@ -179,8 +173,6 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 
 	uint16_t read_fd;
 	FD_SET(sockfd, read_set);
-	//int sync_rv = syncWithClient(sockfd, read_set, &timeout);
-
 	
 	start_connection = recvInitPacket(sockfd, client, from_len);
 	libfile = start_connection->library;
@@ -188,16 +180,12 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	int out_of_order_counter = 0;
 
 
-		// optionally open a library
 	if (strcmp(libfile, "--speed") == 0){
-		// try to open the library, if one is requested
-		printf("In Speed");
-		library = dlopen("/home/andreadidio98/Desktop/University/CS3/Period 1/Systems Programming/systems-programming/Assignment 4/libspeed.so", RTLD_NOW);
-		printf("Opened Speed");
+		library = dlopen("./libspeed.so", RTLD_NOW);
 		if(option == 'i') {
 			increaseSp = dlsym(library, "increaseSpeed");
 			if (!increaseSp){
-				printf("failed to open the requested library. breaking hard\n");
+				printf("[-] failed to open the requested library. breaking hard\n");
 				return -1;
 			}
 		}
@@ -208,46 +196,46 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 				return -1;
 			}
 		} 
-		printf("opened libraryfile %s\n",libfile);
+		printf("[INFO] opened libraryfile %s\n",libfile);
 	}
 	else if(strcmp(libfile, "--mono") == 0) {
-		library = dlopen("/home/andreadidio98/Desktop/University/CS3/Period 1/Systems Programming/systems-programming/Assignment 4/libmono.so", RTLD_NOW);
+		library = dlopen("./libmono.so", RTLD_NOW);
 		if (!library){
 			printf("[-] failed to open the requested library. breaking hard\n");
 			return -1;
 		}
 		convertHeader = dlsym(library, "adjustHeaderToMono");
 		if (!convertHeader){
-			printf("failed to open the requested library. breaking hard\n");
+			printf("[-] failed to open the requested library. breaking hard\n");
 			return -1;
 		}
 		mono = dlsym(library, "convertDataToMono");
 		if (!mono){
-			printf("failed to open the requested library. breaking hard\n");
+			printf("[-] failed to open the requested library. breaking hard\n");
 			return -1;
 		}
-		printf("opened libraryfile %s\n",libfile);
+		printf("[INFO] opened libraryfile %s\n",libfile);
 	}
 	else if(strcmp(libfile, "--volume") == 0) {
-		library = dlopen("/home/andreadidio98/Desktop/University/CS3/Period 1/Systems Programming/systems-programming/Assignment 4/libvolume.so", RTLD_NOW);
+		library = dlopen("./libvolume.so", RTLD_NOW);
 		if(option == 'i') {
 			increaseVol = dlsym(library, "increaseVolume");
 			if (!increaseVol){
-				printf("failed to open the requested library. breaking hard\n");
+				printf("[-] failed to open the requested library. breaking hard\n");
 				return -1;
 			}
 		}
 		else if(option == 'd') {
 			decreaseVol = dlsym(library, "decreaseVolume");
 			if (!decreaseVol){
-				printf("failed to open the requested library. breaking hard\n");
+				printf("[-] failed to open the requested library. breaking hard\n");
 				return -1;
 			}
 		}
-		printf("opened libraryfile %s\n",libfile);
+		printf("[INFO] opened libraryfile %s\n",libfile);
 	}
 	else{
-		printf("not using a filter\n");
+		printf("[INFO] not using a filter\n");
 	}
 	
 	
@@ -262,15 +250,13 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 		decreaseSp(info, start_connection->percentage);
 	}
 	else if(convertHeader) {
-		printf("[DEBUG] In Convert Header");
 		convertHeader(info);
-		printf("Convert HEADER");
 	}
+
 	sendInfo(sockfd, client, info, from_len);
 	
 				
 	read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
-	//printf("READ: %d\n", read_rv);
 	send_packet->size = read_rv;
 	if(mono) {
 		mono(send_packet->data, send_packet->size);
@@ -283,7 +269,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	}
 	if(read_rv < 0) {
 		printPacket(recv_packet, 's');
-		fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
+		fprintf(stderr, "[-] Could not read from audio fd: %s", strerror(errno));
 		return -1;
 	}
 
@@ -293,7 +279,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			printf("OOps");
 			out_of_order_counter++;
 			if(out_of_order_counter >= 20) {
-				fprintf(stderr, "Too many packets were out of order!\n");
+				fprintf(stderr, "[-] Too many packets were out of order!\n");
 				return -1;
 			}
 			sendMessage(sockfd, send_packet, client, from_len);
@@ -303,7 +289,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 				read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
 				//printf("READ: %d\n", read_rv);
 				if(read_rv < 0) {
-					fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
+					fprintf(stderr, "[-] Could not read from audio fd: %s", strerror(errno));
 					return -1;
 				}
 				send_packet->size = read_rv;
@@ -319,12 +305,11 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			}
 			
 			if(read_rv < MAX_BUFFER && read_rv != 0) {// !=0 to avoid looping an extra time
-				send_packet->fin_bit = 1;
+				send_packet->fin_bit = END_CONNECTION;
 				send_packet->size = read_rv;
 				send_packet->ack_number++;
 				send_packet->sequence_number++;
 				sendMessage(sockfd, send_packet, client, from_len);
-				//printf("Successfully streamed the audio file to the client!");
 				
 			}
 			else{
@@ -342,29 +327,28 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 		resetTimeout(sockfd, read_set, &timeout);
 		if(FD_ISSET(sockfd, read_set) && sync_rv == 0){
 			receiveMessage(sockfd, recv_packet, client, from_len);
-			if(recv_packet->fin_bit == 1) {//mention two army problem in report
-				//printf("Successfully streamed the audio file to the client!");
+			if(recv_packet->fin_bit == END_CONNECTION) {//mention two army problem in report
 				starting = 1;
-				
 			}
 		}
 		else if(sync_rv == 1) {
-			printf("Client Timed out. Ready for new requests...\n\n");
-			return -1;
+			return 1;
 		}
 	}
 	close(read_fd);
 	free(recv_packet);
 	free(send_packet);
 	free(info);
+	free(start_connection);
+	dlclose(library);
 	return 0;
 }
 
 
 int main (int argc, char **argv) {
 
-	printf ("SysProg network server\n");
-	printf ("handed in by Andrea Di Dio\n");
+	printf ("[INFO] SysProg network server\n");
+	printf ("[INFO] handed in by Andrea Di Dio\n");
 	if(argc != 1) {
 		printf("Usage: ./audioserver\n");
 		return 1;
@@ -389,27 +373,26 @@ int main (int argc, char **argv) {
 		int stream_rv;
 
 		int select_rv = select(sockfd+1, &read_set, NULL, NULL, NULL);
-		if(select_rv < 0) {
-			printf("Something went wrong! Ready for new requests...\n\n");
-		}
 			
 		if(select_rv > 0) {
 			stream_rv = stream(sockfd, &read_set, &client, from_len, start_connection);
 		}
 
 		if(stream_rv < 0) {
-			printf("Something went wrong! Ready for new requests...\n\n");
+			printf("[-] Something went wrong! Ready for new requests...\n\n");
 		}
-		else {
-			printf("Streaming Successful! Ready for new requests...\n\n");
-			free(start_connection);
+		else if(stream_rv == 0){
+			printf("[+] Streaming Successful! Ready for new requests...\n\n");
 			select(sockfd+1, &read_set, NULL, NULL, NULL);
+		}
+		else if(stream_rv == 1){
+			printf("[-] Client Timed out. Ready for new requests...\n\n");
 		}
 	}
 
 	int close_rv = close(sockfd);
     if(close_rv < 0) {
-        fprintf(stderr, "ERROR: Could not close the socket. %s\n", strerror(errno));
+        fprintf(stderr, "[-] ERROR: Could not close the socket. %s\n", strerror(errno));
         return 1;
     }
 

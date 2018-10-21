@@ -8,12 +8,7 @@
 #include <stdio.h>
 #include "util.h"
 
-#define IAC 255 //initiate negotition for filters
-#define SPEED 254 //speed filter
-#define VOLUME 253 // volume filter
-#define INIT_CONNECTION 1
 #define END_CONNECTION 1
-#define NORMAL_PACKET 0
 
 typedef _Bool uint1_t; //for fin bit
 
