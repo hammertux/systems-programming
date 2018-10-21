@@ -331,9 +331,9 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			
 		}
 
-		resetTimeout(sockfd, read_set, &timeout);
+		
 		int sync_rv = syncWithClient(sockfd, read_set, &timeout);
-
+		resetTimeout(sockfd, read_set, &timeout);
 		if(FD_ISSET(sockfd, read_set) && sync_rv == 0){
 			receiveMessage(sockfd, recv_packet, client, from_len);
 			if(recv_packet->fin_bit == 1) {//mention two army problem in report
