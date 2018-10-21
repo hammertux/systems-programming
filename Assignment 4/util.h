@@ -9,10 +9,13 @@
 #define STR_SERVER_PORT "1234"
 #define IP_PROTOCOL 0
 
+typedef _Bool uint1_t; //for fin bit
+
 typedef struct __attribute__((packed)) _audioinfo {
     int32_t channels;
     int32_t sample_size;
     int32_t sample_rate;
+    uint1_t server_busy;
 }AudioInfo;
 
 //Library typedefs

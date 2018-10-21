@@ -26,7 +26,7 @@
 
 
 static int breakloop = 0;	///< use this variable to stop your wait-loop. Occasionally check its value, !1 signals that the program should close
-
+in_port_t save_port = 0;
 
 /// unimportant: the signal handler. This function gets called when Ctrl^C is pressed
 void sigint_handler(int sigint)
@@ -90,14 +90,21 @@ void sendMessage(int sockfd, Packet* packet, struct sockaddr_in* client, socklen
 	}
 }
 
-void receiveMessage(int sockfd, Packet* packet, struct sockaddr_in* client, socklen_t from_len) {
+int receiveMessage(int sockfd, Packet* packet, struct sockaddr_in* client, socklen_t from_len) {
 	char buffer[sizeof(Packet)];
 	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, (struct sockaddr* )client, &from_len);
+	if(client->sin_port != save_port) {
+		// Packet* tmppacket = buildPacket(NULL,0,0,0);
+		// memset(tmppacket, 0, sizeof(Packet));
+		// sendMessage(sockfd, tmppacket, client, from_len);
+		return 1;
+	}
 	extractPacket(packet, buffer);
     if(recvfrom_rv < 0) {
         fprintf(stderr, "[-] ERROR: Could not receive data. %s\n", strerror(errno));
         exit(1);
     }
+	return 0;
 }
 
 SyncPacket* recvInitPacket(int sockfd, struct sockaddr_in* client, socklen_t from_len) {
@@ -131,12 +138,13 @@ int checkPacket(Packet* sent, Packet* recv) {
 }
 
 void resetTimeout(int sockfd, fd_set* read_set, struct timeval* timeout) {
-	//Needed to avoid kernel from changing the timeout period.
+	//Needed to avoid kernel from changing the timeout period. (Especially for long songs).
 	FD_ZERO(read_set);
 	FD_SET(sockfd, read_set);
 	timeout->tv_sec = 2;
 	timeout->tv_usec = 500000;
 }
+
 
 int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t from_len, SyncPacket* start_connection) {
 
@@ -148,6 +156,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	char* libfile;
 	void* library;
 	char option;
+	
 
 	volumefilter increaseVol = NULL, decreaseVol = NULL;
 	speedfilter increaseSp = NULL, decreaseSp = NULL;
@@ -169,6 +178,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	libfile = start_connection->library;
 	option = start_connection->inc_or_dec;
 	int out_of_order_counter = 0;
+	save_port = client->sin_port;
 
 
 	if (strcmp(libfile, "--speed") == 0){
@@ -215,6 +225,8 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 				printf("[-] failed to open the requested library. breaking hard\n");
 				return -1;
 			}
+
+    		printf("[INFO] Volume Increase\n");
 		}
 		else if(option == 'd') { 
 			*(void **) &decreaseVol = dlsym(library, "decreaseVolume");
@@ -222,10 +234,12 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 				printf("[-] failed to open the requested library. breaking hard\n");
 				return -1;
 			}
+			printf("[INFO] Volume Increase\n");
 		}
 		printf("[INFO] opened libraryfile %s\n",libfile);
 	}
 	else{
+		library = NULL;
 		printf("[INFO] not using a filter\n");
 	}
 	
@@ -243,7 +257,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	else if(convertHeader) {
 		convertHeader(info);
 	}
-
+	info->server_busy = 0;
 	sendInfo(sockfd, client, info, from_len);
 	
 				
@@ -259,10 +273,11 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 		decreaseVol(send_packet->data, start_connection->percentage, send_packet->size);
 	}
 	if(read_rv < 0) {
-		printPacket(recv_packet, 's');
-		fprintf(stderr, "[-] Could not read from audio fd: %s", strerror(errno));
+		//fprintf(stderr, "[-] Could not read from audio fd: %s", strerror(errno));
 		return -1;
 	}
+
+	
 
 	while(read_rv > 0) {
 		int check = checkPacket(send_packet, recv_packet);
@@ -310,10 +325,11 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			
 		}
 		
-		int sync_rv = syncWithClient(sockfd, read_set, &timeout);
+		
 		resetTimeout(sockfd, read_set, &timeout);
+		int sync_rv = syncWithClient(sockfd, read_set, &timeout);
 		if(FD_ISSET(sockfd, read_set) && sync_rv == 0){
-			receiveMessage(sockfd, recv_packet, client, from_len);
+			int recv_rv = receiveMessage(sockfd, recv_packet, client, from_len);
 			if(recv_packet->fin_bit == END_CONNECTION) {//mention two army problem in report
 				starting = 1;
 				close(read_fd);
@@ -325,6 +341,10 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 					dlclose(library);
 				return 0;
 			}
+			else if(recv_rv == 1) {
+				info->server_busy = 1;
+				sendInfo(sockfd, client, info, from_len);
+			}
 		}
 		else if(sync_rv == 1) {
 			close(read_fd);
@@ -332,8 +352,10 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			free(send_packet);
 			free(info);
 			free(start_connection);
-			if(library)
+			if(library) {
 				dlclose(library);
+			}
+				
 			return 1;
 		}
 	}

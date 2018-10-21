@@ -85,6 +85,10 @@ int checkPacket(Packet* sent, Packet* recv) {
 void receiveMessage(int sockfd, struct addrinfo* server, Packet* packet) {
 	char buffer[sizeof(Packet)];
 	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, server->ai_addr, &server->ai_addrlen);
+	// if(packet->size == 0 && packet->sequence_number == 0 && packet->ack_number == 0 && packet->data[0] == 0) {
+	// 	printf("Client Out\n");
+	// 	exit(1);
+	// }
 	extractPacket(packet, buffer);
     if(recvfrom_rv < 0) {
         fprintf(stderr, "[-] ERROR: Could not receive data. %s\n", strerror(errno));
@@ -95,7 +99,7 @@ void receiveMessage(int sockfd, struct addrinfo* server, Packet* packet) {
 int setAudioData(AudioInfo* info) {
 	int write_fd = aud_writeinit(info->sample_rate, info->sample_size, info->channels);
 	if (write_fd < 0){
-		printf("[-] error: unable to open audio output.\n");
+		printf("[-] error: unable to open audio output OR Server is still busy\n");
 		exit(1);
 	}
 
@@ -115,9 +119,12 @@ void sendInitPacket(int sockfd, struct addrinfo* server, SyncPacket* sync) {
 AudioInfo* recvAudioInfo(int sockfd, struct addrinfo* server) {
 	AudioInfo* info = malloc(sizeof(AudioInfo));
 	char buffer[sizeof(AudioInfo)];
-	
 	int recvfrom_rv = recvfrom(sockfd, buffer, sizeof(AudioInfo), 0, server->ai_addr, &server->ai_addrlen);
 	extractInfo(info, buffer);
+	if(info->server_busy == 1) {
+		fprintf(stderr, "OUT");
+		exit(1);
+	}
     if(recvfrom_rv < 0) {
         fprintf(stderr, "[-] ERROR: Could not receive data. %s\n", strerror(errno));
         exit(1);
@@ -306,6 +313,6 @@ int main (int argc, char *argv [])
 		}
 
 	}while(!breakloop);
-	
+
 	return 0 ;
 }

@@ -2,7 +2,6 @@
 
 void increaseVolume(char* buffer, uint8_t percent, size_t bufflen) {
     double multiplier = (double) 1 + ((double)percent/100);
-    printf("[INFO] Volume Increase Multiplier = %f\n", multiplier);
     int i;
     for(i = 0; i < bufflen; i++) {
         buffer[i] *= multiplier;
@@ -12,7 +11,6 @@ void increaseVolume(char* buffer, uint8_t percent, size_t bufflen) {
 
 void decreaseVolume(char* buffer, uint8_t percent, size_t bufflen) {
     double multiplier = (double) 1 + ((double)percent/100);
-    printf("[INFO] Volume Increase Multiplier = %f\n", multiplier);
     int i;
     for(i = 0; i < bufflen; i++) {
         buffer[i] *= multiplier;

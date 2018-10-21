@@ -87,7 +87,6 @@ AudioInfo* initInfo(int32_t size, int32_t rate, int32_t channels) {
     info->sample_rate = rate;
     info->sample_size = size;
     info->channels = channels;
-
     return info;
 }
 
@@ -98,6 +97,7 @@ void freeAudioInfo(AudioInfo* info) {
 
 void serializeInfo(AudioInfo* info, char* buf){
     int32_t four_byte_data;
+    uint1_t one_bit_data;
     int byte_offset = 0;
 
     four_byte_data = htonl(info->channels);
@@ -110,12 +110,16 @@ void serializeInfo(AudioInfo* info, char* buf){
 
     four_byte_data = htonl(info->sample_size);
     memcpy(buf + byte_offset, &four_byte_data, sizeof(four_byte_data));
+    byte_offset += sizeof(four_byte_data);
+
+    one_bit_data = htonl(info->server_busy);
+    memcpy(buf + byte_offset, &one_bit_data, sizeof(one_bit_data));
 
 }
 
 void extractInfo(AudioInfo* info, char buffer[sizeof(AudioInfo)]) {
     //AudioInfo* info = malloc(sizeof(AudioInfo));
-
+    uint1_t one_bit_data;
     int32_t four_byte_data;
     int byte_offset = 0;
 
@@ -129,6 +133,10 @@ void extractInfo(AudioInfo* info, char buffer[sizeof(AudioInfo)]) {
 
     memcpy(&four_byte_data, buffer + byte_offset, sizeof(four_byte_data));
     info->sample_size = ntohl(four_byte_data);
+    byte_offset += sizeof(four_byte_data);
+
+    memcpy(&one_bit_data, buffer + byte_offset, sizeof(one_bit_data));
+    info->server_busy = ntohl(one_bit_data);
 
 }
 
