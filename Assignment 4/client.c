@@ -145,9 +145,9 @@ int main (int argc, char *argv [])
 {
 	printf ("SysProg2006 network client\n");
 	printf ("handed in by Andrea Di Dio\n");
-	char* lib;
-	char option;
-	uint8_t perc;
+	char* lib = "";
+	char option = 'n';
+	uint8_t perc = 0;
 	
 	signal( SIGINT, sigint_handler );// trap Ctrl^C signals
 	

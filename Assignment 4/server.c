@@ -164,10 +164,10 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	typedef void (*monoHeaderFilter)(AudioInfo* info);
 	typedef void (*monoFilter)(char* buffer, size_t bufflen);
 	typedef void (*volumefilter)(char* buffer, uint8_t perc, size_t bufflen);
-	volumefilter increaseVol, decreaseVol;
-	speedfilter increaseSp, decreaseSp;
-	monoHeaderFilter convertHeader;
-	monoFilter mono;
+	volumefilter increaseVol = NULL, decreaseVol = NULL;
+	speedfilter increaseSp = NULL, decreaseSp = NULL;
+	monoHeaderFilter convertHeader = NULL;
+	monoFilter mono = NULL;
 	
 
 	FD_ZERO(read_set);
@@ -191,7 +191,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	if (strcmp(libfile, "--speed") == 0){
 		// try to open the library, if one is requested
 		printf("In Speed");
-		library = dlopen("libspeed.so", RTLD_NOW);
+		library = dlopen("/home/andreadidio98/Desktop/University/CS3/Period 1/Systems Programming/systems-programming/Assignment 4/libspeed.so", RTLD_NOW);
 		printf("Opened Speed");
 		if(option == 'i') {
 			increaseSp = dlsym(library, "increaseSpeed");
@@ -210,7 +210,11 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 		printf("opened libraryfile %s\n",libfile);
 	}
 	else if(strcmp(libfile, "--mono") == 0) {
-		library = dlopen("libmono.so", RTLD_NOW);
+		library = dlopen("/home/andreadidio98/Desktop/University/CS3/Period 1/Systems Programming/systems-programming/Assignment 4/libmono.so", RTLD_NOW);
+		if (!library){
+			printf("[-] failed to open the requested library. breaking hard\n");
+			return -1;
+		}
 		convertHeader = dlsym(library, "adjustHeaderToMono");
 		if (!convertHeader){
 			printf("failed to open the requested library. breaking hard\n");
@@ -224,7 +228,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 		printf("opened libraryfile %s\n",libfile);
 	}
 	else if(strcmp(libfile, "--volume") == 0) {
-		library = dlopen("libvolume.so", RTLD_NOW);
+		library = dlopen("/home/andreadidio98/Desktop/University/CS3/Period 1/Systems Programming/systems-programming/Assignment 4/libvolume.so", RTLD_NOW);
 		if(option == 'i') {
 			increaseVol = dlsym(library, "increaseVolume");
 			if (!increaseVol){
@@ -257,7 +261,9 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 		decreaseSp(info, start_connection->percentage);
 	}
 	else if(convertHeader) {
+		printf("[DEBUG] In Convert Header");
 		convertHeader(info);
+		printf("Convert HEADER");
 	}
 	sendInfo(sockfd, client, info, from_len);
 	
@@ -294,6 +300,16 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 					fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
 					return -1;
 				}
+				send_packet->size = read_rv;
+				if(increaseVol) {
+					increaseVol(send_packet->data, start_connection->percentage, send_packet->size);
+				}
+				else if(decreaseVol) {
+					decreaseVol(send_packet->data, start_connection->percentage, send_packet->size);
+				}
+				else if(mono) {
+					mono(send_packet->data, send_packet->size);
+				}		
 			}
 			
 			if(read_rv < MAX_BUFFER && read_rv != 0) {// !=0 to avoid looping an extra time
@@ -306,13 +322,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 				
 			}
 			else{
-				send_packet->size = read_rv;
-				if(increaseVol) {
-					increaseVol(send_packet->data, start_connection->percentage, send_packet->size);
-				}
-				else if(decreaseVol) {
-					decreaseVol(send_packet->data, start_connection->percentage, send_packet->size);
-				}		
+				
 				sendMessage(sockfd, send_packet, client, from_len);
 				send_packet->ack_number++;
 				send_packet->sequence_number++;
