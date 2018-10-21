@@ -28,7 +28,6 @@
 static int breakloop = 0;	///< use this variable to stop your wait-loop. Occasionally check its value, !1 signals that the program should close
 in_port_t save_port = 0;
 
-/// unimportant: the signal handler. This function gets called when Ctrl^C is pressed
 void sigint_handler(int sigint)
 {
 	if (!breakloop){
@@ -94,9 +93,6 @@ int receiveMessage(int sockfd, Packet* packet, struct sockaddr_in* client, sockl
 	char buffer[sizeof(Packet)];
 	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, (struct sockaddr* )client, &from_len);
 	if(client->sin_port != save_port) {
-		// Packet* tmppacket = buildPacket(NULL,0,0,0);
-		// memset(tmppacket, 0, sizeof(Packet));
-		// sendMessage(sockfd, tmppacket, client, from_len);
 		return 1;
 	}
 	extractPacket(packet, buffer);
@@ -234,7 +230,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 				printf("[-] failed to open the requested library. breaking hard\n");
 				return -1;
 			}
-			printf("[INFO] Volume Increase\n");
+			printf("[INFO] Volume Decrease\n");
 		}
 		printf("[INFO] opened libraryfile %s\n",libfile);
 	}
@@ -273,7 +269,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 		decreaseVol(send_packet->data, start_connection->percentage, send_packet->size);
 	}
 	if(read_rv < 0) {
-		//fprintf(stderr, "[-] Could not read from audio fd: %s", strerror(errno));
+		fprintf(stderr, "[-] Could not read from audio fd: %s", strerror(errno));
 		return -1;
 	}
 
@@ -330,7 +326,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 		int sync_rv = syncWithClient(sockfd, read_set, &timeout);
 		if(FD_ISSET(sockfd, read_set) && sync_rv == 0){
 			int recv_rv = receiveMessage(sockfd, recv_packet, client, from_len);
-			if(recv_packet->fin_bit == END_CONNECTION) {//mention two army problem in report
+			if(recv_packet->fin_bit == END_CONNECTION && recv_rv == 0) {
 				starting = 1;
 				close(read_fd);
 				free(recv_packet);
@@ -410,7 +406,6 @@ int main (int argc, char **argv) {
 		}
 		else if(stream_rv == 0){
 			printf("[+] Streaming Successful! Ready for new requests...\n\n");
-			select(sockfd+1, &read_set, NULL, NULL, NULL);
 		}
 		else if(stream_rv == 1){
 			printf("[-] Client Timed out. Ready for new requests...\n\n");

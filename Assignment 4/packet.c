@@ -1,11 +1,5 @@
 #include "packet.h"
 
-/**************************************************************
- * This file is mainly for the serialisation of the various 
- * packets in order to increase little/big endian portability.
- * 
- **************************************************************/
-
 Packet* buildPacket(char buffer[MAX_BUFFER], uint32_t seq_num, uint32_t ack, uint16_t size) {
     Packet* packet = malloc(sizeof(Packet));
     packet->sequence_number = seq_num;
@@ -56,7 +50,6 @@ void serializePacket(Packet* packet, char* buf) {
 }
 
 void extractPacket(Packet* packet, char buffer[sizeof(Packet)]) {
-    //Packet* packet = malloc(sizeof(Packet));
 
     uint32_t four_byte_data;
     uint1_t one_bit_data;
@@ -118,7 +111,6 @@ void serializeInfo(AudioInfo* info, char* buf){
 }
 
 void extractInfo(AudioInfo* info, char buffer[sizeof(AudioInfo)]) {
-    //AudioInfo* info = malloc(sizeof(AudioInfo));
     uint1_t one_bit_data;
     int32_t four_byte_data;
     int byte_offset = 0;

@@ -85,10 +85,6 @@ int checkPacket(Packet* sent, Packet* recv) {
 void receiveMessage(int sockfd, struct addrinfo* server, Packet* packet) {
 	char buffer[sizeof(Packet)];
 	int recvfrom_rv = recvfrom(sockfd, &buffer, sizeof(Packet), 0, server->ai_addr, &server->ai_addrlen);
-	// if(packet->size == 0 && packet->sequence_number == 0 && packet->ack_number == 0 && packet->data[0] == 0) {
-	// 	printf("Client Out\n");
-	// 	exit(1);
-	// }
 	extractPacket(packet, buffer);
     if(recvfrom_rv < 0) {
         fprintf(stderr, "[-] ERROR: Could not receive data. %s\n", strerror(errno));
@@ -99,7 +95,7 @@ void receiveMessage(int sockfd, struct addrinfo* server, Packet* packet) {
 int setAudioData(AudioInfo* info) {
 	int write_fd = aud_writeinit(info->sample_rate, info->sample_size, info->channels);
 	if (write_fd < 0){
-		printf("[-] error: unable to open audio output OR Server is still busy\n");
+		printf("[-] error: unable to open audio output\n");
 		exit(1);
 	}
 
@@ -122,7 +118,7 @@ AudioInfo* recvAudioInfo(int sockfd, struct addrinfo* server) {
 	int recvfrom_rv = recvfrom(sockfd, buffer, sizeof(AudioInfo), 0, server->ai_addr, &server->ai_addrlen);
 	extractInfo(info, buffer);
 	if(info->server_busy == 1) {
-		fprintf(stderr, "OUT");
+		fprintf(stderr, "[-] The Server is currently busy, try again later!\n");
 		exit(1);
 	}
     if(recvfrom_rv < 0) {
@@ -169,9 +165,11 @@ int main (int argc, char *argv [])
 		lib = argv[3];
 		if(argv[4] && strcmp(argv[4], "-i") == 0) {
 			option = 'i';
+			printf("[INFO] Increasing Speed Lib Requested\n");
 		}
 		else if(argv[4] && strcmp(argv[4], "-d") == 0) {
 			option = 'd';
+			printf("[INFO] Decreasing Speed Lib Requested\n");
 		}
 		if(argv[5]) {
 			perc = atoi(argv[5]);
@@ -181,9 +179,11 @@ int main (int argc, char *argv [])
 		lib = argv[3];
 		if(argv[4] && strcmp(argv[4], "-i") == 0) {
 			option = 'i';
+			printf("[INFO] Increasing Volume Lib Requested\n");
 		}
 		else if(argv[4] && strcmp(argv[4], "-d") == 0) {
 			option = 'd';
+			printf("[INFO] Decreasing Volume Lib Requested\n");
 		}
 		if(argv[5]) {
 			perc = atoi(argv[5]);
@@ -191,6 +191,7 @@ int main (int argc, char *argv [])
 	}
 	else if(argv[3] && strcmp(argv[3],"--mono")==0) {
 		lib = argv[3];
+		printf("[INFO] Mono Lib Requested\n");
 	}
 	else{
 		printf("[INFO] not using a filter\n");
