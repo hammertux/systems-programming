@@ -23,6 +23,9 @@
 #include "audio.h"
 #include "packet.h"
 #include "util.h"
+#include "volumelib.h"
+#include "speedlib.h"
+#include "monolib.h"
 
 #define IP_PROTOCOL 0
 
@@ -147,60 +150,6 @@ void resetTimeout(int sockfd, fd_set* read_set, struct timeval* timeout) {
 	timeout->tv_usec = 500000;
 }
 
-/// stream data to a client. 
-///
-/// This is an example function; you do *not* have to use this and can choose a different flow of control
-///
-/// @param fd an opened file descriptor for reading and writing
-/// @return returns 0 on success or a negative errorcode on failure
-// int stream_data(int client_fd)
-// {
-// 	server_filterfunc pfunc;
-// 	char *datafile, *libfile;
-
-// 	// optionally open a library
-// 	if (libfile){
-// 		// try to open the library, if one is requested
-// 		pfunc = NULL;
-// 		if (!pfunc){
-// 			printf("failed to open the requested library. breaking hard\n");
-// 			return -1;
-// 		}
-// 		printf("opened libraryfile %s\n",libfile);
-// 	}
-// 	else{
-// 		pfunc = NULL;
-// 		printf("not using a filter\n");
-// 	}
-	
-// 	// TO IMPLEMENT : optionally return an error code to the client if initialization went wrong
-	
-// 	// start streaming
-// 	{
-// 		int bytesread, bytesmod;
-// 		char buffer[MAX_BUFFER];
-		
-// 		while (bytesread > 0){
-// 			// you might also want to check that the client is still active, whether it wants resends, etc..
-			
-// 			// edit data in-place. Not necessarily the best option
-// 			if (pfunc)
-// 				bytesmod = pfunc(buffer,bytesread); 
-// 			write(client_fd, buffer, bytesmod);
-			
-// 		}
-// 	}
-
-// 	// TO IMPLEMENT : optionally close the connection gracefully 	
-	
-// 	if (datafile)
-// 		free(datafile);
-// 	if (libfile)
-// 		free(libfile);
-	
-// 	return 0;
-// }
-
 int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t from_len, SyncPacket* start_connection) {
 
 	struct timeval timeout;
@@ -208,6 +157,17 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	timeout.tv_usec = 500000;
 	int read_rv;
 	int starting = 1;
+	char* libfile;
+	void* library;
+	char option;
+	typedef void (*speedfilter)(AudioInfo* info, uint8_t perc);
+	typedef void (*monoHeaderFilter)(AudioInfo* info);
+	typedef void (*monoFilter)(char* buffer, size_t bufflen);
+	typedef void (*volumefilter)(char* buffer, uint8_t perc, size_t bufflen);
+	volumefilter increaseVol, decreaseVol;
+	speedfilter increaseSp, decreaseSp;
+	monoHeaderFilter convertHeader;
+	monoFilter mono;
 	
 
 	FD_ZERO(read_set);
@@ -223,16 +183,97 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 
 	
 	start_connection = recvInitPacket(sockfd, client, from_len);
+	libfile = start_connection->library;
+	option = start_connection->inc_or_dec;
+
+
+		// optionally open a library
+	if (strcmp(libfile, "--speed") == 0){
+		// try to open the library, if one is requested
+		printf("In Speed");
+		library = dlopen("libspeed.so", RTLD_NOW);
+		printf("Opened Speed");
+		if(option == 'i') {
+			increaseSp = dlsym(library, "increaseSpeed");
+			if (!increaseSp){
+				printf("failed to open the requested library. breaking hard\n");
+				return -1;
+			}
+		}
+		else if(option == 'd') {
+			decreaseSp = dlsym(library, "decreaseSpeed");
+			if (!decreaseSp){
+				printf("failed to open the requested library. breaking hard\n");
+				return -1;
+			}
+		} 
+		printf("opened libraryfile %s\n",libfile);
+	}
+	else if(strcmp(libfile, "--mono") == 0) {
+		library = dlopen("libmono.so", RTLD_NOW);
+		convertHeader = dlsym(library, "adjustHeaderToMono");
+		if (!convertHeader){
+			printf("failed to open the requested library. breaking hard\n");
+			return -1;
+		}
+		mono = dlsym(library, "convertDataToMono");
+		if (!mono){
+			printf("failed to open the requested library. breaking hard\n");
+			return -1;
+		}
+		printf("opened libraryfile %s\n",libfile);
+	}
+	else if(strcmp(libfile, "--volume") == 0) {
+		library = dlopen("libvolume.so", RTLD_NOW);
+		if(option == 'i') {
+			increaseVol = dlsym(library, "increaseVolume");
+			if (!increaseVol){
+				printf("failed to open the requested library. breaking hard\n");
+				return -1;
+			}
+		}
+		else if(option == 'd') {
+			decreaseVol = dlsym(library, "decreaseVolume");
+			if (!decreaseVol){
+				printf("failed to open the requested library. breaking hard\n");
+				return -1;
+			}
+		}
+		printf("opened libraryfile %s\n",libfile);
+	}
+	else{
+		printf("not using a filter\n");
+	}
 	
 	
 	read_fd = aud_readinit(start_connection->file, &info->sample_rate, &info->sample_size, &info->channels);
 	if(read_fd < 0) {
 		return -1;
 	}
+	if(increaseSp) {
+		increaseSp(info, start_connection->percentage);
+	}
+	else if(decreaseSp) {
+		decreaseSp(info, start_connection->percentage);
+	}
+	else if(convertHeader) {
+		convertHeader(info);
+	}
 	sendInfo(sockfd, client, info, from_len);
+	
 				
 	read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
 	//printf("READ: %d\n", read_rv);
+	send_packet->size = read_rv;
+	if(mono) {
+		mono(send_packet->data, send_packet->size);
+	}
+	else if(increaseVol) {
+		increaseVol(send_packet->data, start_connection->percentage, send_packet->size);
+	}
+	else if(decreaseVol) {
+		decreaseVol(send_packet->data, start_connection->percentage, send_packet->size);
+	}
 	if(read_rv < 0) {
 		printPacket(recv_packet, 's');
 		fprintf(stderr, "Could not read from audio fd: %s", strerror(errno));
@@ -265,7 +306,13 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 				
 			}
 			else{
-				send_packet->size = read_rv;				
+				send_packet->size = read_rv;
+				if(increaseVol) {
+					increaseVol(send_packet->data, start_connection->percentage, send_packet->size);
+				}
+				else if(decreaseVol) {
+					decreaseVol(send_packet->data, start_connection->percentage, send_packet->size);
+				}		
 				sendMessage(sockfd, send_packet, client, from_len);
 				send_packet->ack_number++;
 				send_packet->sequence_number++;

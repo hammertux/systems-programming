@@ -145,6 +145,9 @@ int main (int argc, char *argv [])
 {
 	printf ("SysProg2006 network client\n");
 	printf ("handed in by Andrea Di Dio\n");
+	char* lib;
+	char option;
+	uint8_t perc;
 	
 	signal( SIGINT, sigint_handler );// trap Ctrl^C signals
 	
@@ -154,19 +157,38 @@ int main (int argc, char *argv [])
 		return -1;
 	}
 
-	client_filterfunc pfunc;
+	
 	// open the library on the clientside if one is requested
-	if (argv[3] && strcmp(argv[3],"")){
+	if (argv[3] && strcmp(argv[3],"--speed")==0){
+		lib = argv[3];
 		// try to open the library, if one is requested
-		pfunc = NULL;
-		if (!pfunc){
-			printf("failed to open the requested library. breaking hard\n");
-			return -1;
+		if(argv[4] && strcmp(argv[4], "-i") == 0) {
+			option = 'i';
 		}
-		printf("opened libraryfile %s\n",argv[3]);
+		else if(argv[4] && strcmp(argv[4], "-d") == 0) {
+			option = 'd';
+		}
+		if(argv[5]) {
+			perc = atoi(argv[5]);
+		}
+	}
+	else if (argv[3] && strcmp(argv[3],"--volume")==0){
+		lib = argv[3];
+		// try to open the library, if one is requested
+		if(argv[4] && strcmp(argv[4], "-i") == 0) {
+			option = 'i';
+		}
+		else if(argv[4] && strcmp(argv[4], "-d") == 0) {
+			option = 'd';
+		}
+		if(argv[5]) {
+			perc = atoi(argv[5]);
+		}
+	}
+	else if(argv[3] && strcmp(argv[3],"--mono")==0) {
+		lib = argv[3];
 	}
 	else{
-		pfunc = NULL;
 		printf("not using a filter\n");
 	}
 
@@ -178,7 +200,7 @@ int main (int argc, char *argv [])
 	fd_set read_set;
 	AudioInfo* audioinfo = NULL;
 	Packet* send_packet = buildPacket(NULL, 1, 0, 0), *recv_packet = buildPacket(NULL, 0, 0, 0);
-	SyncPacket* start_connection = initSync(argv[2], "", 'i', 0);
+	SyncPacket* start_connection = initSync(argv[2], lib, option, perc);
 
 
 	FD_ZERO(&read_set);
@@ -252,27 +274,6 @@ int main (int argc, char *argv [])
 		}
 
 	}while(!breakloop);
-
-
-	
-	
-	
-	
-	
-	// start receiving data
-	// {
-	// 	int bytesread, bytesmod;
-	// 	char *modbuffer;
-		
-	// 	bytesread = read(server_fd, buffer, BUFSIZE);
-	// 	while (bytesread > 0){
-	// 		// edit data in-place. Not necessarily the best option
-	// 		if (pfunc)
-	// 			modbuffer = pfunc(buffer,bytesread,&bytesmod); 
-	// 		write(audio_fd, modbuffer, bytesmod);
-	// 		bytesread = read(server_fd, buffer, BUFSIZE);
-	// 	}
-	// }
 
 	freeaddrinfo(server);
 	free(send_packet);

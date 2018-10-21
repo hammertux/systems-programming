@@ -1,7 +1,7 @@
 ###################### DEFS
 
 CC = gcc
-CFLAGS = -Wall -pedantic -Werror
+CFLAGS = -Wall -pedantic
 LDFLAGS = -ldl
 DEPS = $(wildcard *.h)
 
@@ -11,22 +11,22 @@ DEPS = $(wildcard *.h)
 	$(CC) $(CFLAGS) -shared -nostdlib -fPIC -g $+ -o $@
 
 %.o : %.c
-	${CC} ${CFLAGS} -c -g $^ -o $@
+	${CC} ${CFLAGS}  -c -g $^ ${LDFLAGS} -o $@
 
 ####################### TARGETS
 
 # add your libraries to this line, as in 'libtest.so', make sure you have a 'libtest.c' as source
-LIBS = libblank.so
+LIBS = libspeed.so libmono.so libvolume.so
 
 .PHONY : all clean distclean
 
 all : client server ${LIBS}
 
-client : client.o audio.o packet.o reverselib.o
-	${CC} ${CFLAGS} -o $@ $+
+client : client.o audio.o packet.o
+	${CC} ${CFLAGS} ${LDFLAGS} -o $@ $+
 
-server : server.o audio.o packet.o reverselib.o
-	${CC} ${CFLAGS} -o $@ $+
+server : server.o audio.o packet.o
+	${CC} ${CFLAGS}  -o $@ $+ ${LDFLAGS} -L.-lmono -L.-lvolume -L.-lspeed
 
 distclean : clean
 	rm -f server client *.so
