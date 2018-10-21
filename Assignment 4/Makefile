@@ -1,7 +1,7 @@
 ###################### DEFS
 
 CC = gcc
-CFLAGS = -Wall -pedantic
+CFLAGS = -Wall -pedantic -Werror
 LDFLAGS = -ldl
 DEPS = $(wildcard *.h)
 

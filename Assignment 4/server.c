@@ -41,12 +41,6 @@ void sigint_handler(int sigint)
 	}
 }
 
-void gracefullyExit(int sockfd, int audio_fd) {
-	close(audio_fd);
-	close(sockfd);
-	exit(1);
-}
-
 int syncWithClient(int sockfd, fd_set* sync, struct timeval* timeout) {
     int select_rv = select(sockfd + 1, sync, NULL, NULL, timeout);
     if(select_rv < 0 && breakloop == 1) {
@@ -154,10 +148,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	char* libfile;
 	void* library;
 	char option;
-	typedef void (*speedfilter)(AudioInfo* info, uint8_t perc);
-	typedef void (*monoHeaderFilter)(AudioInfo* info);
-	typedef void (*monoFilter)(char* buffer, size_t bufflen);
-	typedef void (*volumefilter)(char* buffer, uint8_t perc, size_t bufflen);
+
 	volumefilter increaseVol = NULL, decreaseVol = NULL;
 	speedfilter increaseSp = NULL, decreaseSp = NULL;
 	monoHeaderFilter convertHeader = NULL;
@@ -183,14 +174,14 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	if (strcmp(libfile, "--speed") == 0){
 		library = dlopen("./libspeed.so", RTLD_NOW);
 		if(option == 'i') {
-			increaseSp = dlsym(library, "increaseSpeed");
+			*(void **) &increaseSp = dlsym(library, "increaseSpeed");
 			if (!increaseSp){
 				printf("[-] failed to open the requested library. breaking hard\n");
 				return -1;
 			}
 		}
 		else if(option == 'd') {
-			decreaseSp = dlsym(library, "decreaseSpeed");
+			*(void **) &decreaseSp = dlsym(library, "decreaseSpeed");
 			if (!decreaseSp){
 				printf("failed to open the requested library. breaking hard\n");
 				return -1;
@@ -204,12 +195,12 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			printf("[-] failed to open the requested library. breaking hard\n");
 			return -1;
 		}
-		convertHeader = dlsym(library, "adjustHeaderToMono");
+		*(void **) &convertHeader = dlsym(library, "adjustHeaderToMono");
 		if (!convertHeader){
 			printf("[-] failed to open the requested library. breaking hard\n");
 			return -1;
 		}
-		mono = dlsym(library, "convertDataToMono");
+		*(void **) &mono = dlsym(library, "convertDataToMono");
 		if (!mono){
 			printf("[-] failed to open the requested library. breaking hard\n");
 			return -1;
@@ -219,14 +210,14 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	else if(strcmp(libfile, "--volume") == 0) {
 		library = dlopen("./libvolume.so", RTLD_NOW);
 		if(option == 'i') {
-			increaseVol = dlsym(library, "increaseVolume");
+			*(void **) &increaseVol = dlsym(library, "increaseVolume");
 			if (!increaseVol){
 				printf("[-] failed to open the requested library. breaking hard\n");
 				return -1;
 			}
 		}
-		else if(option == 'd') {
-			decreaseVol = dlsym(library, "decreaseVolume");
+		else if(option == 'd') { 
+			*(void **) &decreaseVol = dlsym(library, "decreaseVolume");
 			if (!decreaseVol){
 				printf("[-] failed to open the requested library. breaking hard\n");
 				return -1;
@@ -280,17 +271,14 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			out_of_order_counter++;
 			if(out_of_order_counter >= 20) {
 				fprintf(stderr, "[-] Too many packets were out of order!\n");
-				return -1;
 			}
 			sendMessage(sockfd, send_packet, client, from_len);
 		}
 		else {
 			if(starting == 0) {
 				read_rv = read(read_fd, send_packet->data, MAX_BUFFER);
-				//printf("READ: %d\n", read_rv);
 				if(read_rv < 0) {
 					fprintf(stderr, "[-] Could not read from audio fd: %s", strerror(errno));
-					return -1;
 				}
 				send_packet->size = read_rv;
 				if(increaseVol) {
@@ -321,7 +309,6 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			}
 			
 		}
-
 		
 		int sync_rv = syncWithClient(sockfd, read_set, &timeout);
 		resetTimeout(sockfd, read_set, &timeout);
@@ -329,19 +316,37 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			receiveMessage(sockfd, recv_packet, client, from_len);
 			if(recv_packet->fin_bit == END_CONNECTION) {//mention two army problem in report
 				starting = 1;
+				close(read_fd);
+				free(recv_packet);
+				free(send_packet);
+				free(info);
+				free(start_connection);
+				if(library)
+					dlclose(library);
+				return 0;
 			}
 		}
 		else if(sync_rv == 1) {
+			close(read_fd);
+			free(recv_packet);
+			free(send_packet);
+			free(info);
+			free(start_connection);
+			if(library)
+				dlclose(library);
 			return 1;
 		}
 	}
+
 	close(read_fd);
 	free(recv_packet);
 	free(send_packet);
 	free(info);
 	free(start_connection);
-	dlclose(library);
-	return 0;
+	if(library)
+		dlclose(library);
+
+	return -1;
 }
 
 

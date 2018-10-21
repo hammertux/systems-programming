@@ -21,7 +21,7 @@
 
 #include "audio.h"
 #include "packet.h"
-#include "util.h"
+#include "util.h" 
 
 static int breakloop = 0;	///< use this variable to stop your wait-loop. Occasionally check its value, !1 signals that the program should close
 
@@ -66,7 +66,6 @@ void sendMessage(int sockfd, Packet* packet, struct addrinfo* server) {
 	char buffer[sizeof(Packet)];
 	serializePacket(packet, buffer);
 	int sendto_rv = sendto(sockfd, &buffer, sizeof(Packet), 0, server->ai_addr, server->ai_addrlen);
-	//printf("SENT: %d\n", sendto_rv);
 
 	if(sendto_rv < 0) {
         fprintf(stderr, "[-] ERROR: Could not send data. %s\n", strerror(errno));
@@ -106,7 +105,6 @@ int setAudioData(AudioInfo* info) {
 void sendInitPacket(int sockfd, struct addrinfo* server, SyncPacket* sync) {
 
 	int sendto_rv = sendto(sockfd, sync, sizeof(SyncPacket), 0, server->ai_addr, server->ai_addrlen);
-	//printf("SENT: %d\n", sendto_rv);
 
 	if(sendto_rv < 0) {
         fprintf(stderr, "[-] ERROR: Could not send data. %s\n", strerror(errno));
@@ -133,6 +131,14 @@ void endConnection(int sockfd, Packet* send, Packet* recv, struct addrinfo* serv
 	sendMessage(sockfd, send, server);
 	printf("[+] Server finished streaming requested file!\n");
 	
+}
+
+void freeMemory(struct addrinfo* srv, SyncPacket* sync, AudioInfo* info, Packet* recv, Packet* send) {
+	free(send);
+	free(recv);
+	free(sync);
+	free(info);
+	freeaddrinfo(srv);
 }
 
 int main (int argc, char *argv [])
@@ -223,7 +229,16 @@ int main (int argc, char *argv [])
 		int sync_rv = syncWithServer(server_fd, &read_set, &timeout);
 		if(sync_rv == 1) {
 			printf("[-] The connection with the server was lost...\n");
-			return -1;
+			freeMemory(server, start_connection, audioinfo, recv_packet, send_packet);
+			int close_rv = close(server_fd);
+			if(close_rv < 0) {
+				fprintf(stderr, "[-] Error: Could not close the socket\n");
+				return 1;
+			}
+
+			if (audio_fd >= 0)	
+				close(audio_fd);
+			return 1;
 		}
 		else if(FD_ISSET(server_fd, &read_set) && sync_rv == 0){
 			if(starting == 1) {
@@ -235,13 +250,17 @@ int main (int argc, char *argv [])
 				receiveMessage(server_fd, server, recv_packet);
 				if(recv_packet->fin_bit == 1) {
 					endConnection(server_fd, send_packet, recv_packet, server);
-					
-					freeaddrinfo(server);
-					free(send_packet);
-					free(recv_packet);
-					free(start_connection);
-					free(audioinfo);
-					return 1;
+					freeMemory(server, start_connection, audioinfo, recv_packet, send_packet);
+					int close_rv = close(server_fd);
+					if(close_rv < 0) {
+						fprintf(stderr, "[-] Error: Could not close the socket\n");
+						return 1;
+					}
+
+					if (audio_fd >= 0)	
+						close(audio_fd);
+
+					return 0;
 				}
 					
 			}
@@ -255,6 +274,15 @@ int main (int argc, char *argv [])
 				write_rv = write(audio_fd, recv_packet->data, recv_packet->size);
 				if(write_rv < 0) {
 					fprintf(stderr, "[-] Could not write to audio fd: %s", strerror(errno));
+					freeMemory(server, start_connection, audioinfo, recv_packet, send_packet);
+					int close_rv = close(server_fd);
+					if(close_rv < 0) {
+						fprintf(stderr, "[-] Error: Could not close the socket\n");
+						return 1;
+					}
+
+					if (audio_fd >= 0)	
+						close(audio_fd);
 					return 1;
 				}
 			}
@@ -262,6 +290,15 @@ int main (int argc, char *argv [])
 				out_of_order_counter++;
 				if(out_of_order_counter >= 20) {
 					fprintf(stderr, "[-] Too many packets were out of order!\n");
+					freeMemory(server, start_connection, audioinfo, recv_packet, send_packet);
+					int close_rv = close(server_fd);
+					if(close_rv < 0) {
+						fprintf(stderr, "[-] Error: Could not close the socket\n");
+						return 1;
+					}
+
+					if (audio_fd >= 0)	
+						close(audio_fd);
 					return 1;
 				}
 				sendMessage(server_fd, send_packet, server);
@@ -269,21 +306,6 @@ int main (int argc, char *argv [])
 		}
 
 	}while(!breakloop);
-
-	freeaddrinfo(server);
-	free(send_packet);
-	free(recv_packet);
-	free(start_connection);
-	free(audioinfo);
-
-    int close_rv = close(server_fd);
-    if(close_rv < 0) {
-        fprintf(stderr, "[-] Error: Could not close the socket\n");
-        return 1;
-    }
-
-	if (audio_fd >= 0)	
-		close(audio_fd);
 	
 	return 0 ;
 }
