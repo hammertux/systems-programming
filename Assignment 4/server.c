@@ -185,6 +185,7 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 	start_connection = recvInitPacket(sockfd, client, from_len);
 	libfile = start_connection->library;
 	option = start_connection->inc_or_dec;
+	int out_of_order_counter = 0;
 
 
 		// optionally open a library
@@ -290,6 +291,11 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 		int check = checkPacket(send_packet, recv_packet);
 		if(check == 1) {
 			printf("OOps");
+			out_of_order_counter++;
+			if(out_of_order_counter >= 20) {
+				fprintf(stderr, "Too many packets were out of order!\n");
+				return -1;
+			}
 			sendMessage(sockfd, send_packet, client, from_len);
 		}
 		else {
@@ -346,7 +352,6 @@ int stream(int sockfd, fd_set* read_set, struct sockaddr_in* client, socklen_t f
 			printf("Client Timed out. Ready for new requests...\n\n");
 			return -1;
 		}
-		
 	}
 	close(read_fd);
 	free(recv_packet);

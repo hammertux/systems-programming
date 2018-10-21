@@ -221,6 +221,7 @@ int main (int argc, char *argv [])
     }
 
 	server_fd = setupSocket(server);
+	int out_of_order_counter = 0;
 
 	do {
 		if(starting) {
@@ -255,12 +256,12 @@ int main (int argc, char *argv [])
 				}
 					
 			}
-		
-			sendMessage(server_fd, send_packet, server);
-				
+			
+			sendMessage(server_fd, send_packet, server);	
 			send_packet->sequence_number++;
 			send_packet->ack_number = recv_packet->sequence_number;
-
+			send_packet->ack_number = recv_packet->sequence_number;
+			
 			if(checkPacket(send_packet, recv_packet) == 0) {
 				write_rv = write(audio_fd, recv_packet->data, recv_packet->size);
 				if(write_rv < 0) {
@@ -269,6 +270,11 @@ int main (int argc, char *argv [])
 				}
 			}
 			else {
+				out_of_order_counter++;
+				if(out_of_order_counter >= 20) {
+					fprintf(stderr, "Too many packets were out of order!\n");
+					return 1;
+				}
 				sendMessage(server_fd, send_packet, server);
 			}
 		}
